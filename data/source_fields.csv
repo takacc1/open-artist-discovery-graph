@@ -1,0 +1,22 @@
+source,field,use_in_mvp,license_class,purpose,notes
+MusicBrainz,artist_mbid,yes,CC0,canonical identifier,JSON/Core dump or core API field
+MusicBrainz,artist_name,yes,CC0,display and search,retain source spelling
+MusicBrainz,sort_name,yes,CC0,sorting,
+MusicBrainz,aliases,yes,CC0,search and disambiguation,do not expose legal names without need
+MusicBrainz,artist_type,yes,CC0,disambiguation,
+MusicBrainz,area_country,yes,CC0,disambiguation and metadata score,
+MusicBrainz,life_span,yes,CC0,disambiguation and activity state,
+MusicBrainz,artist_relationships,yes,CC0,relationship evidence,limit to relationship types used by the model
+MusicBrainz,tags,no,CC_BY_NC_SA_3_0,excluded,not part of commercial-ready core
+MusicBrainz,genres,no,CC_BY_NC_SA_3_0,excluded,not part of commercial-ready core
+MusicBrainz,ratings,no,CC_BY_NC_SA_3_0,excluded,not part of commercial-ready core
+MusicBrainz,annotation,no,mixed_or_restricted,excluded,free text is unnecessary for MVP
+ListenBrainz,listen_timestamp,processing_only,CC0,session and temporal aggregation,never copy to production
+ListenBrainz,recording_mbid,processing_only,CC0,canonicalization,aggregate then discard raw rows
+ListenBrainz,artist_mbid,processing_only,CC0,artist aggregation,aggregate then discard raw rows
+ListenBrainz,user_identifier,processing_only,CC0,user-artist matrix,pseudonymize at ingest and discard after aggregation
+ListenBrainz,listener_count,yes,CC0,confidence and coverage,store only aggregated counts above threshold
+ListenBrainz,total_listen_count,yes,CC0,coverage diagnostic,not a quality score
+Wikidata,genre_entity_id,yes,CC0,metadata similarity,store QID and statement provenance
+Wikidata,country_entity_id,yes,CC0,disambiguation and metadata,store QID rather than translated label
+Wikidata,inception_or_start_time,yes,CC0,activity-era feature,allow missing values
