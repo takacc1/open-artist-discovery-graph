@@ -8,3 +8,7 @@ reports/cache/
 reports/artist_coverage.csv
 reports/coverage_summary.json
 reports/coverage_summary.md
+reports/similarity_top10.csv
+reports/similarity_summary.json
+reports/similarity_summary.md
+*.sqlite3

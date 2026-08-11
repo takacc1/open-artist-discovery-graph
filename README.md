@@ -9,6 +9,10 @@
 - `notebooks/01_data_feasibility.ipynb`: MusicBrainz、ListenBrainz、Wikidataの被覆率検証
 - `src/feasibility.py`: NotebookからもCLIからも使える再実行可能な取得処理
 - `tests/test_feasibility.py`: 50組の一意性と同名候補のスコアリング検査
+- `src/similarity.py`: ListenBrainzダンプからcosine類似度＋shrinkageを計算
+- `notebooks/02_similarity_prototype.ipynb`: 類似度計算を再実行するNotebook入口
+- `tests/test_similarity.py`: MBID抽出、log変換、信頼度区分の検査
+- `docs/phase0_similarity_findings.md`: 実データでの初回結果と次の判断
 
 ## 実行方法
 
@@ -32,6 +36,25 @@ ListenBrainzは公開統計APIを匿名で読み取り、ログインやUser Tok
 - `reports/coverage_summary.json`
 - `reports/coverage_summary.md`
 
+## 類似度の試作
+
+MusicBrainzの名寄せ結果 `reports/artist_coverage.csv` と、ListenBrainz公式の増分listensダンプを使います。ダンプはプロジェクト外に置き、次のように実行します。
+
+```bash
+python -m src.similarity \
+  --archive /path/to/listenbrainz-listens-dump-incremental.tar.zst
+```
+
+処理は、再生数をユーザー×Artist MBIDで集計し、100回を上限に `log(1 + count)` へ変換します。そのベクトルのcosine類似度に `共通リスナー数 / (共通リスナー数 + 10)` を掛け、少人数だけで一致した候補を下げます。
+
+出力は次の3ファイルです。
+
+- `reports/similarity_top10.csv`: 50組ごとの上位10候補、理由、類似度、信頼度
+- `reports/similarity_summary.json`: 全数値とアーティスト別の検証結果
+- `reports/similarity_summary.md`: 読みやすい要約
+
+`expected_similar` はAPIから得た正解ではなく、結果評価用にこちらで手入力した参考候補です。Top 10に含まれた割合を診断値として出します。
+
 ## 同名誤結合の確認
 
 自動検索で得たMBIDは、人が確認するまで本人と断定しません。`reports/artist_coverage.csv`の次の列を確認します。
@@ -47,7 +70,7 @@ ListenBrainzは公開統計APIを匿名で読み取り、ログインやUser Tok
 
 ## プライバシー上の制限
 
-ListenBrainzのリスナー統計APIはユーザー名を返しますが、本処理はそれを保存しません。保存するのはデータ有無、総再生数、返却された上位リスナー数だけです。
+ListenBrainzのリスナー統計APIはユーザー名を返しますが、被覆率検証はそれを保存しません。類似度計算でもダンプ内のユーザー名は読み取らず、数値IDは実行ごとの秘密鍵で直ちに匿名化します。作業DBと最終出力のどちらにも生のユーザー名・ユーザーIDは保存せず、最終出力には個人別履歴も残しません。共通リスナー数が2人未満の組み合わせも出力しません。
 
 ## テスト
 
