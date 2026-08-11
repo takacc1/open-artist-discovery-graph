@@ -1,51 +1,51 @@
-artist_name,expected_similar,category,expected_country,expected_type,expected_ended,disambiguation_hint,manual_identity_status,notes
-サカナクション,くるり|cero|SUPERCAR,major_japan,JP,Group,false,,,
-くるり,サカナクション|スピッツ|NUMBER GIRL,major_japan,JP,Group,false,,,
-ASIAN KUNG-FU GENERATION,BUMP OF CHICKEN|NUMBER GIRL|ELLEGARDEN,major_japan,JP,Group,false,,,
-BUMP OF CHICKEN,RADWIMPS|ASIAN KUNG-FU GENERATION|スピッツ,major_japan,JP,Group,false,,,
-RADWIMPS,BUMP OF CHICKEN|米津玄師|ONE OK ROCK,major_japan,JP,Group,false,,,
-スピッツ,くるり|BUMP OF CHICKEN|フジファブリック,major_japan,JP,Group,false,,,
-宇多田ヒカル,椎名林檎|米津玄師|SIRUP,major_japan,JP,Person,false,,,
-椎名林檎,宇多田ヒカル|東京事変|鬼束ちひろ,major_japan,JP,Person,false,,,
-米津玄師,宇多田ヒカル|RADWIMPS|須田景凪,major_japan,JP,Person,false,,,
-YOASOBI,ヨルシカ|ずっと真夜中でいいのに。|Ado,major_japan,JP,Group,false,,,
-cero,サカナクション|ミツメ|Yogee New Waves,indie_japan,JP,Group,false,,,
-CHAI,Otoboke Beaver|Superorganism|新しい学校のリーダーズ,indie_japan,JP,Group,true,Japanese band,,2024年に活動終了を公表
-tricot,toe|Ling tosite sigure|Covet,indie_japan,JP,Group,false,Japanese math-rock band,,
-羊文学,きのこ帝国|Homecomings|Regal Lily,indie_japan,JP,Group,false,,,
-betcover!!,GEZAN|Dos Monos|NUMBER GIRL,indie_japan,JP,Group,false,Japanese band,,
-DYGL,The Strokes|Yogee New Waves|The fin.,indie_japan,JP,Group,false,Japanese indie-rock band,,
-ミツメ,cero|Homecomings|Yogee New Waves,indie_japan,JP,Group,false,Japanese band,,
-Homecomings,羊文学|ミツメ|Laura day romance,indie_japan,JP,Group,false,Japanese band,,
-きのこ帝国,羊文学|For Tracy Hyde|My Dead Girlfriend,indie_japan,JP,Group,true,Japanese band,,
-ゆらゆら帝国,NUMBER GIRL|Boris|OGRE YOU ASSHOLE,ended_japan,JP,Group,true,,,
-NUMBER GIRL,ASIAN KUNG-FU GENERATION|ゆらゆら帝国|eastern youth,ended_japan,JP,Group,true,Japanese rock band,,2019年再結成後2022年解散
-BOØWY,COMPLEX|BUCK-TICK|THE BLUE HEARTS,ended_japan,JP,Group,true,Japanese rock band,,
-Yellow Magic Orchestra,Ryuichi Sakamoto|Haruomi Hosono|Kraftwerk,ended_japan,JP,Group,true,Japanese electronic group,,YMO表記の別名も確認
-SUPERCAR,サカナクション|くるり|NUMBER GIRL,ended_japan,JP,Group,true,Japanese rock band,,
-フリッパーズ・ギター,Cornelius|Kenji Ozawa|Pizzicato Five,ended_japan,JP,Group,true,,
-Lamp,Minuano|Ryusenkei|Kaede,ambiguous_name,JP,Group,false,Japanese band,,
-MONO,Explosions in the Sky|Mogwai|toe,ambiguous_name,JP,Group,false,Japanese post-rock band,,
-Boris,Melvins|Sunn O)))|Electric Wizard,ambiguous_name,JP,Group,false,Japanese experimental rock band,,
-toe,tricot|LITE|Mouse on the Keys,ambiguous_name,JP,Group,false,Japanese math-rock band,,
-downy,THE NOVEMBERS|People In The Box|LITE,ambiguous_name,JP,Group,false,Japanese rock band,,
-Radiohead,The Smile|Portishead|Björk,international,GB,Group,false,English rock band,,
-Björk,FKA twigs|Kate Bush|Arca,international,IS,Person,false,Icelandic singer,,
-The Beatles,The Beach Boys|The Rolling Stones|George Harrison,international,GB,Group,true,English rock band,,
-Kendrick Lamar,J. Cole|Tyler the Creator|Schoolboy Q,international,US,Person,false,American rapper,,
-Aphex Twin,Autechre|Boards of Canada|Squarepusher,international,GB,Person,false,British electronic musician,,
-aespa,IVE|LE SSERAFIM|NMIXX,kpop_girl_group,KR,Group,false,South Korean girl group,,
-IVE,aespa|LE SSERAFIM|STAYC,kpop_girl_group,KR,Group,false,South Korean girl group,,
-TWICE,Red Velvet|BLACKPINK|GFRIEND,kpop_girl_group,KR,Group,false,South Korean girl group,,
-Red Velvet,TWICE|f(x)|MAMAMOO,kpop_girl_group,KR,Group,false,South Korean girl group,,
-BLACKPINK,2NE1|TWICE|(G)I-DLE,kpop_girl_group,KR,Group,false,South Korean girl group,,
-LE SSERAFIM,IVE|aespa|NewJeans,kpop_girl_group,KR,Group,false,South Korean girl group,,
-NewJeans,IVE|LE SSERAFIM|ILLIT,kpop_girl_group,KR,Group,false,South Korean girl group,,
-NMIXX,ITZY|aespa|Kep1er,kpop_girl_group,KR,Group,false,South Korean girl group,,
-ITZY,NMIXX|aespa|EVERGLOW,kpop_girl_group,KR,Group,false,South Korean girl group,,
-(G)I-DLE,BLACKPINK|MAMAMOO|LE SSERAFIM,kpop_girl_group,KR,Group,false,South Korean girl group,,MusicBrainzのハイフン表記差を確認
-藤井風,宇多田ヒカル|Vaundy|SIRUP,newer_japan,JP,Person,false,Japanese singer-songwriter,,
-tuki.,Ado|りりあ。|優里,newer_japan,JP,Person,false,Japanese singer-songwriter,,
-muque,羊文学|chilldspot|DURDN,newer_japan,JP,Group,false,Japanese band,,
-PAS TASTA,chelmico|Dos Monos|Snail's House,newer_japan,JP,Group,false,Japanese music collective,,
-新しい学校のリーダーズ,CHAI|Wednesday Campanella|ATARASHII GAKKO!,newer_japan,JP,Group,false,Japanese dance and vocal group,,MusicBrainzでの正式表記と英語別名を確認
+artist_name,expected_similar,category,expected_country,expected_type,expected_ended,disambiguation_hint,manual_identity_status,notes,manual_mbid
+サカナクション,くるり|cero|SUPERCAR,major_japan,JP,Group,false,,confirmed,,01830cc1-8a04-4dfb-9e4a-d557dfda6a93
+くるり,サカナクション|スピッツ|NUMBER GIRL,major_japan,JP,Group,false,,confirmed,,252c9f8a-be04-4146-b73e-a24696b2f5ed
+ASIAN KUNG-FU GENERATION,BUMP OF CHICKEN|NUMBER GIRL|ELLEGARDEN,major_japan,JP,Group,false,,confirmed,,14e410f5-97f2-48ba-b1f7-a3a44cbea05c
+BUMP OF CHICKEN,RADWIMPS|ASIAN KUNG-FU GENERATION|スピッツ,major_japan,JP,Group,false,,confirmed,,0f718079-e5ea-4cfb-b512-b2d04da66901
+RADWIMPS,BUMP OF CHICKEN|米津玄師|ONE OK ROCK,major_japan,JP,Group,false,,confirmed,,6f500293-7396-4903-b4fd-118127d06f9e
+スピッツ,くるり|BUMP OF CHICKEN|フジファブリック,major_japan,JP,Group,false,,confirmed,,0550993e-ddec-468e-b05f-da81bf6f7694
+宇多田ヒカル,椎名林檎|米津玄師|SIRUP,major_japan,JP,Person,false,,confirmed,,b539e453-c4fe-47e3-8a07-8517eac74429
+椎名林檎,宇多田ヒカル|東京事変|鬼束ちひろ,major_japan,JP,Person,false,,confirmed,,9e414497-23b7-4ab7-9ec6-8ea9864c9e87
+米津玄師,宇多田ヒカル|RADWIMPS|須田景凪,major_japan,JP,Person,false,,confirmed,,09d4a85c-4916-4b4e-bc96-c4cfcf371046
+YOASOBI,ヨルシカ|ずっと真夜中でいいのに。|Ado,major_japan,JP,Group,false,,confirmed,,df6c619f-4334-43e2-8b6a-4a32af1e4f85
+cero,サカナクション|ミツメ|Yogee New Waves,indie_japan,JP,Group,false,,confirmed,,196b78c8-e4de-4440-93b8-db52b0af56cd
+CHAI,Otoboke Beaver|Superorganism|新しい学校のリーダーズ,indie_japan,JP,Group,true,Japanese band,confirmed,2024年に活動終了を公表,0e84b561-5a1b-460d-bd14-35dad2abcc08
+tricot,toe|Ling tosite sigure|Covet,indie_japan,JP,Group,false,Japanese math-rock band,confirmed,,8849da42-cbf6-452b-9220-95c7c691014b
+羊文学,きのこ帝国|Homecomings|Regal Lily,indie_japan,JP,Group,false,,confirmed,,cd8858ea-73c4-4c8f-8fcc-5aba0b877688
+betcover!!,GEZAN|Dos Monos|NUMBER GIRL,indie_japan,JP,Group,false,Japanese band,confirmed,,99ef6a0e-b94e-481d-8034-bb8fb8f984cd
+DYGL,The Strokes|Yogee New Waves|The fin.,indie_japan,JP,Group,false,Japanese indie-rock band,confirmed,,f527e755-e941-42df-82f0-aa49bbc4038c
+ミツメ,cero|Homecomings|Yogee New Waves,indie_japan,JP,Group,false,Japanese band,confirmed,,6618c69f-0680-4283-a4ea-436c7b0b87a5
+Homecomings,羊文学|ミツメ|Laura day romance,indie_japan,JP,Group,false,Japanese band,confirmed,,aebd1aa9-3786-4fd5-8696-159d2937664d
+きのこ帝国,羊文学|For Tracy Hyde|My Dead Girlfriend,indie_japan,JP,Group,true,Japanese band,confirmed,,18a15d8d-b7bf-4921-9976-aa6388b99a9a
+ゆらゆら帝国,NUMBER GIRL|Boris|OGRE YOU ASSHOLE,ended_japan,JP,Group,true,,confirmed,,ae6c9840-240d-4f53-a56a-b5ff3da19550
+NUMBER GIRL,ASIAN KUNG-FU GENERATION|ゆらゆら帝国|eastern youth,ended_japan,JP,Group,true,Japanese rock band,confirmed,2019年再結成後2022年解散,808fe413-ff00-4a68-99fe-0ab265a7e2be
+BOØWY,COMPLEX|BUCK-TICK|THE BLUE HEARTS,ended_japan,JP,Group,true,Japanese rock band,confirmed,,e4042709-8b47-40af-ba30-391d9c81008f
+Yellow Magic Orchestra,Ryuichi Sakamoto|Haruomi Hosono|Kraftwerk,ended_japan,JP,Group,true,Japanese electronic group,confirmed,YMO表記の別名も確認,ac5af671-1df0-4312-8b7b-e61992ecc883
+SUPERCAR,サカナクション|くるり|NUMBER GIRL,ended_japan,JP,Group,true,Japanese rock band,confirmed,,371d6599-6292-4f3f-94d2-5b2fd19b089c
+フリッパーズ・ギター,Cornelius|Kenji Ozawa|Pizzicato Five,ended_japan,JP,Group,true,,confirmed,,9f06d736-81b9-4cc5-b101-caed4e1ef9b8
+Lamp,Minuano|Ryusenkei|Kaede,ambiguous_name,JP,Group,false,Japanese band,confirmed,,8bff8d1d-2e87-4b97-9909-2bd3404e92b9
+MONO,Explosions in the Sky|Mogwai|toe,ambiguous_name,JP,Group,false,Japanese post-rock band,confirmed,,ffe02aed-ef7e-4736-a186-c2f1dd55ce8d
+Boris,Melvins|Sunn O)))|Electric Wizard,ambiguous_name,JP,Group,false,Japanese experimental rock band,confirmed,,57652bf8-cfe8-42e7-b9a7-5572a7080d8d
+toe,tricot|LITE|Mouse on the Keys,ambiguous_name,JP,Group,false,Japanese math-rock band,confirmed,,7ea8a523-b33d-4944-ad31-fad25a81d603
+downy,THE NOVEMBERS|People In The Box|LITE,ambiguous_name,JP,Group,false,Japanese rock band,confirmed,,f2bec217-8b84-42d4-9395-1421f1fa8a51
+Radiohead,The Smile|Portishead|Björk,international,GB,Group,false,English rock band,confirmed,,a74b1b7f-71a5-4011-9441-d0b5e4122711
+Björk,FKA twigs|Kate Bush|Arca,international,IS,Person,false,Icelandic singer,confirmed,,87c5dedd-371d-4a53-9f7f-80522fb7f3cb
+The Beatles,The Beach Boys|The Rolling Stones|George Harrison,international,GB,Group,true,English rock band,confirmed,,b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d
+Kendrick Lamar,J. Cole|Tyler the Creator|Schoolboy Q,international,US,Person,false,American rapper,confirmed,,381086ea-f511-4aba-bdf9-71c753dc5077
+Aphex Twin,Autechre|Boards of Canada|Squarepusher,international,GB,Person,false,British electronic musician,confirmed,,f22942a1-6f70-4f48-866e-238cb2308fbd
+aespa,IVE|LE SSERAFIM|NMIXX,kpop_girl_group,KR,Group,false,South Korean girl group,confirmed,,b51c672b-85e0-48fe-8648-470a2422229f
+IVE,aespa|LE SSERAFIM|STAYC,kpop_girl_group,KR,Group,false,South Korean girl group,confirmed,,b2f2216a-d7a9-4ce0-8b8f-f494d9a8c196
+TWICE,Red Velvet|BLACKPINK|GFRIEND,kpop_girl_group,KR,Group,false,South Korean girl group,confirmed,,8da127cc-c432-418f-b356-ef36210d82ac
+Red Velvet,TWICE|f(x)|MAMAMOO,kpop_girl_group,KR,Group,false,South Korean girl group,confirmed,,4f0cb3b7-6c06-4317-ae35-ddf3106a17ee
+BLACKPINK,2NE1|TWICE|(G)I-DLE,kpop_girl_group,KR,Group,false,South Korean girl group,confirmed,,48646387-1664-4c9a-9139-9bfd091b823c
+LE SSERAFIM,IVE|aespa|NewJeans,kpop_girl_group,KR,Group,false,South Korean girl group,confirmed,,1ee37742-1e3d-4e61-84d2-bc85f4c1459a
+NewJeans,IVE|LE SSERAFIM|ILLIT,kpop_girl_group,KR,Group,false,South Korean girl group,confirmed,,49204a7a-ed85-407a-828f-6fd46f1d8126
+NMIXX,ITZY|aespa|Kep1er,kpop_girl_group,KR,Group,false,South Korean girl group,confirmed,,2d623e82-73e2-4179-9c44-e963980f2d58
+ITZY,NMIXX|aespa|EVERGLOW,kpop_girl_group,KR,Group,false,South Korean girl group,confirmed,,bce172fc-51bb-43f7-9a25-b406a0a581d5
+(G)I-DLE,BLACKPINK|MAMAMOO|LE SSERAFIM,kpop_girl_group,KR,Group,false,South Korean girl group,confirmed,MusicBrainzのハイフン表記差を確認,0068ae6c-7156-40f9-a81f-39294af6a549
+藤井風,宇多田ヒカル|Vaundy|SIRUP,newer_japan,JP,Person,false,Japanese singer-songwriter,confirmed,,c3a4aeca-8f02-4d22-b1ff-693434ab09a8
+tuki.,Ado|りりあ。|優里,newer_japan,JP,Person,false,Japanese singer-songwriter,confirmed,,1359dfb8-8220-4ebe-aeb9-b759ed737c41
+muque,羊文学|chilldspot|DURDN,newer_japan,JP,Group,false,Japanese band,confirmed,,23e7c092-a83f-40e7-8367-e4edd4ee9f38
+PAS TASTA,chelmico|Dos Monos|Snail's House,newer_japan,JP,Group,false,Japanese music collective,confirmed,,7a15b5b3-04f7-489b-8311-d8e5cf3de178
+新しい学校のリーダーズ,CHAI|Wednesday Campanella|ATARASHII GAKKO!,newer_japan,JP,Group,false,Japanese dance and vocal group,confirmed,MusicBrainzでの正式表記と英語別名を確認,12a43a61-e31a-4cac-92a6-c95ce9cdfe3c

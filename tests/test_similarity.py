@@ -1,6 +1,12 @@
 import unittest
 
-from src.similarity import artist_records, confidence_label, pseudonymize_user_id, weight
+from src.similarity import (
+    artist_credit_records,
+    artist_records,
+    confidence_label,
+    pseudonymize_user_id,
+    weight,
+)
 
 
 class SimilarityTests(unittest.TestCase):
@@ -24,6 +30,17 @@ class SimilarityTests(unittest.TestCase):
     def test_log_weight_caps_extreme_listen_counts(self) -> None:
         self.assertEqual(weight(100, 100), weight(10_000, 100))
         self.assertLess(weight(1, 100), weight(10, 100))
+
+    def test_spark_artist_credit_mbids_are_normalized_and_deduplicated(self) -> None:
+        self.assertEqual(
+            [("abc", "aespa")],
+            artist_credit_records(" aespa ", ["ABC", "abc", None]),
+        )
+        self.assertEqual(
+            [("abc", ""), ("def", "")],
+            artist_credit_records("aespa feat. IVE", ["ABC", "DEF"]),
+        )
+        self.assertEqual([], artist_credit_records("aespa", None))
 
     def test_user_id_is_keyed_before_it_reaches_the_work_database(self) -> None:
         key = b"test-key"

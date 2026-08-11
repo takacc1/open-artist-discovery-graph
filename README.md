@@ -13,6 +13,7 @@
 - `notebooks/02_similarity_prototype.ipynb`: 類似度計算を再実行するNotebook入口
 - `tests/test_similarity.py`: MBID抽出、log変換、信頼度区分の検査
 - `docs/phase0_similarity_findings.md`: 実データでの初回結果と次の判断
+- `docs/identity_review.md`: 50組のMBID監査と同名候補の判断記録
 
 ## 実行方法
 
@@ -38,11 +39,11 @@ ListenBrainzは公開統計APIを匿名で読み取り、ログインやUser Tok
 
 ## 類似度の試作
 
-MusicBrainzの名寄せ結果 `reports/artist_coverage.csv` と、ListenBrainz公式の増分listensダンプを使います。ダンプはプロジェクト外に置き、次のように実行します。
+MusicBrainzの名寄せ結果 `reports/artist_coverage.csv` と、ListenBrainz公式のSpark増分ダンプを使います。Spark版にはListenBrainz側で対応付けられた `artist_credit_mbids` があり、名前だけでArtist MBIDを推測せずに利用率を上げられます。ダンプはプロジェクト外に置き、次のように実行します。
 
 ```bash
 python -m src.similarity \
-  --archive /path/to/listenbrainz-listens-dump-incremental.tar.zst
+  --spark-archive /path/to/listenbrainz-spark-dump-incremental.tar
 ```
 
 処理は、再生数をユーザー×Artist MBIDで集計し、100回を上限に `log(1 + count)` へ変換します。そのベクトルのcosine類似度に `共通リスナー数 / (共通リスナー数 + 10)` を掛け、少人数だけで一致した候補を下げます。
@@ -57,7 +58,7 @@ python -m src.similarity \
 
 ## 同名誤結合の確認
 
-自動検索で得たMBIDは、人が確認するまで本人と断定しません。`reports/artist_coverage.csv`の次の列を確認します。
+自動検索で得たMBIDは、人が確認するまで本人と断定しません。今回は50組すべてを確認し、`data/validation_artists.csv` の `manual_mbid` に固定済みです。再確認するときは `reports/artist_coverage.csv` の次の列を使います。
 
 - `resolved_mbid`
 - `resolved_name`
@@ -66,7 +67,7 @@ python -m src.similarity \
 - `resolved_disambiguation`
 - `top_candidates`
 
-確認後、`data/validation_artists.csv`の `manual_identity_status` を `confirmed` または `incorrect` に更新し、再実行します。50件すべてが確認済みになるまで、Go / No-Goは `PENDING_MANUAL_IDENTITY_REVIEW` のままです。
+確認後、`manual_identity_status` を `confirmed` または `incorrect` に更新します。固定した `manual_mbid` は再検索で順位が変わっても優先されます。今回の結果は50/50確認済み、同名誤結合0件、判定 `GO` です。
 
 ## プライバシー上の制限
 

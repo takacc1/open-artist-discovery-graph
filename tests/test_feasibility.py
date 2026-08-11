@@ -1,7 +1,7 @@
 import unittest
 from pathlib import Path
 
-from src.feasibility import normalize_name, read_rows, score_candidate
+from src.feasibility import MusicBrainzResolver, normalize_name, read_rows, score_candidate
 
 
 class FeasibilityTests(unittest.TestCase):
@@ -43,6 +43,40 @@ class FeasibilityTests(unittest.TestCase):
             "disambiguation": "British electronic duo",
         }
         self.assertGreater(score_candidate(row, correct).total, score_candidate(row, wrong).total)
+
+    def test_manual_mbid_pins_a_reviewed_candidate(self) -> None:
+        resolver = MusicBrainzResolver.__new__(MusicBrainzResolver)
+        resolver.search = lambda _name: [
+            {
+                "id": "wrong",
+                "name": "Aphex Twin",
+                "score": 100,
+                "type": "Person",
+                "life-span": {},
+            },
+            {
+                "id": "correct",
+                "name": "Aphex Twin",
+                "score": 90,
+                "country": "GB",
+                "type": "Person",
+                "life-span": {},
+            },
+        ]
+        result = resolver.resolve(
+            {
+                "artist_name": "Aphex Twin",
+                "expected_country": "GB",
+                "expected_type": "Person",
+                "expected_ended": "false",
+                "disambiguation_hint": "",
+                "category": "international",
+                "manual_mbid": "correct",
+                "manual_identity_status": "confirmed",
+            }
+        )
+        self.assertEqual("manual_confirmed", result["resolution_status"])
+        self.assertEqual("correct", result["resolved_mbid"])
 
 
 if __name__ == "__main__":

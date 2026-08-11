@@ -8,10 +8,17 @@ import math
 import os
 import sqlite3
 import subprocess
+import tempfile
 from collections import defaultdict
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Iterator
+from typing import Any, Iterator
+
+try:
+    import pyarrow.dataset as arrow_dataset
+except ModuleNotFoundError:
+    arrow_dataset = None  # type: ignore[assignment]
 
 from src.feasibility import normalize_name, write_csv
 
@@ -51,6 +58,25 @@ def artist_records(listen: dict[str, Any]) -> list[tuple[str, str]]:
         name = str(names[index]) if isinstance(names, list) and index < len(names) else fallback_name
         result.append((mbid, name.strip()))
     return result
+
+
+def artist_credit_records(artist_name: str, mbids: Any) -> list[tuple[str, str]]:
+    """Normalize the MusicBrainz artist-credit identifiers from a Spark row."""
+    if not isinstance(mbids, list):
+        return []
+    normalized_mbids: list[str] = []
+    seen: set[str] = set()
+    for raw_mbid in mbids:
+        mbid = str(raw_mbid or "").strip().lower()
+        if not mbid or mbid in seen:
+            continue
+        seen.add(mbid)
+        normalized_mbids.append(mbid)
+    # A combined credit such as "K/DA with ..." does not identify the
+    # individual names belonging to each MBID. Leave those names empty until
+    # the same MBID appears in an unambiguous single-artist credit.
+    name = str(artist_name or "").strip() if len(normalized_mbids) == 1 else ""
+    return [(mbid, name) for mbid in normalized_mbids]
 
 
 def pseudonymize_user_id(user_id: int, key: bytes) -> bytes:
@@ -99,8 +125,19 @@ def iter_dump_listens(archive: Path, member: str | None = None) -> Iterator[dict
         raise RuntimeError(f"Could not stream ListenBrainz dump: {stderr.strip()}")
 
 
-def create_aggregate_db(archive: Path, database: Path, batch_size: int = 25_000) -> dict[str, int]:
-    """Aggregate listens to user×artist counts; never store usernames or raw listens."""
+INSERT_USER_ARTIST_SQL = """
+    INSERT INTO user_artist (user_key, artist_mbid, artist_name, listen_count)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT (user_key, artist_mbid) DO UPDATE SET
+        listen_count = listen_count + excluded.listen_count,
+        artist_name = CASE
+            WHEN user_artist.artist_name = '' THEN excluded.artist_name
+            ELSE user_artist.artist_name
+        END
+"""
+
+
+def initialize_aggregate_db(database: Path) -> sqlite3.Connection:
     database.parent.mkdir(parents=True, exist_ok=True)
     database.unlink(missing_ok=True)
     connection = sqlite3.connect(database)
@@ -118,41 +155,15 @@ def create_aggregate_db(archive: Path, database: Path, batch_size: int = 25_000)
         ) WITHOUT ROWID
         """
     )
-    insert_sql = """
-        INSERT INTO user_artist (user_key, artist_mbid, artist_name, listen_count)
-        VALUES (?, ?, ?, 1)
-        ON CONFLICT (user_key, artist_mbid) DO UPDATE SET
-            listen_count = listen_count + 1,
-            artist_name = CASE
-                WHEN user_artist.artist_name = '' THEN excluded.artist_name
-                ELSE user_artist.artist_name
-            END
-    """
-    batch: list[tuple[bytes, str, str]] = []
-    pseudonym_key = os.urandom(32)
-    rows_seen = 0
-    rows_with_mbid = 0
-    artist_credits_seen = 0
-    for listen in iter_dump_listens(archive):
-        rows_seen += 1
-        user_id = listen.get("user_id")
-        if not isinstance(user_id, int):
-            continue
-        user_key = pseudonymize_user_id(user_id, pseudonym_key)
-        artists = artist_records(listen)
-        if not artists:
-            continue
-        rows_with_mbid += 1
-        for mbid, name in artists:
-            batch.append((user_key, mbid, name))
-            artist_credits_seen += 1
-        if len(batch) >= batch_size:
-            connection.executemany(insert_sql, batch)
-            connection.commit()
-            batch.clear()
-    if batch:
-        connection.executemany(insert_sql, batch)
-        connection.commit()
+    return connection
+
+
+def finalize_aggregate_db(
+    connection: sqlite3.Connection,
+    rows_seen: int,
+    rows_with_mbid: int,
+    artist_credits_seen: int,
+) -> dict[str, int]:
     connection.execute("CREATE INDEX user_artist_by_artist ON user_artist (artist_mbid, user_key)")
     connection.commit()
     aggregate_rows = connection.execute("SELECT COUNT(*) FROM user_artist").fetchone()[0]
@@ -167,6 +178,125 @@ def create_aggregate_db(archive: Path, database: Path, batch_size: int = 25_000)
         "users": users,
         "artists": artists,
     }
+
+
+def create_aggregate_db(archive: Path, database: Path, batch_size: int = 25_000) -> dict[str, int]:
+    """Aggregate listens to user×artist counts; never store usernames or raw listens."""
+    connection = initialize_aggregate_db(database)
+    batch: list[tuple[bytes, str, str, int]] = []
+    pseudonym_key = os.urandom(32)
+    user_keys: dict[int, bytes] = {}
+    rows_seen = 0
+    rows_with_mbid = 0
+    artist_credits_seen = 0
+    for listen in iter_dump_listens(archive):
+        rows_seen += 1
+        user_id = listen.get("user_id")
+        if not isinstance(user_id, int):
+            continue
+        user_key = user_keys.get(user_id)
+        if user_key is None:
+            user_key = pseudonymize_user_id(user_id, pseudonym_key)
+            user_keys[user_id] = user_key
+        artists = artist_records(listen)
+        if not artists:
+            continue
+        rows_with_mbid += 1
+        for mbid, name in artists:
+            batch.append((user_key, mbid, name, 1))
+            artist_credits_seen += 1
+        if len(batch) >= batch_size:
+            connection.executemany(INSERT_USER_ARTIST_SQL, batch)
+            connection.commit()
+            batch.clear()
+    if batch:
+        connection.executemany(INSERT_USER_ARTIST_SQL, batch)
+        connection.commit()
+    return finalize_aggregate_db(connection, rows_seen, rows_with_mbid, artist_credits_seen)
+
+
+@contextmanager
+def spark_parquet_paths(source: Path) -> Iterator[list[Path]]:
+    if source.is_dir():
+        paths = sorted(source.rglob("*.parquet"))
+        if not paths:
+            raise ValueError(f"No Parquet files found under {source}")
+        yield paths
+        return
+
+    completed = subprocess.run(
+        ["tar", "-tf", str(source)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    members = [line for line in completed.stdout.splitlines() if line.endswith(".parquet")]
+    if not members:
+        raise ValueError(f"No Parquet members found in {source}")
+    for member in members:
+        member_path = Path(member)
+        if member_path.is_absolute() or ".." in member_path.parts:
+            raise ValueError(f"Unsafe archive member: {member}")
+
+    with tempfile.TemporaryDirectory(prefix="listenbrainz-spark-", dir="/private/tmp") as temp_dir:
+        subprocess.run(
+            ["tar", "-xf", str(source), "-C", temp_dir, *members],
+            check=True,
+        )
+        yield [Path(temp_dir) / member for member in members]
+
+
+def create_spark_aggregate_db(
+    spark_source: Path,
+    database: Path,
+    batch_size: int = 100_000,
+) -> dict[str, int]:
+    """Aggregate ListenBrainz Spark rows using its mapped artist-credit MBIDs."""
+    if arrow_dataset is None:
+        raise RuntimeError("Install Spark dump support with: python -m pip install -r requirements.txt")
+
+    connection = initialize_aggregate_db(database)
+    pseudonym_key = os.urandom(32)
+    user_keys: dict[int, bytes] = {}
+    pending: list[tuple[bytes, str, str, int]] = []
+    rows_seen = 0
+    rows_with_mbid = 0
+    artist_credits_seen = 0
+
+    with spark_parquet_paths(spark_source) as paths:
+        dataset = arrow_dataset.dataset([str(path) for path in paths], format="parquet")
+        columns = ["user_id", "artist_name", "artist_credit_mbids"]
+        for record_batch in dataset.to_batches(columns=columns, batch_size=65_536):
+            values = record_batch.to_pydict()
+            rows_seen += record_batch.num_rows
+            for user_id, artist_name, mbids in zip(
+                values["user_id"],
+                values["artist_name"],
+                values["artist_credit_mbids"],
+                strict=True,
+            ):
+                if not isinstance(user_id, int):
+                    continue
+                artists = artist_credit_records(artist_name, mbids)
+                if not artists:
+                    continue
+                rows_with_mbid += 1
+                user_key = user_keys.get(user_id)
+                if user_key is None:
+                    user_key = pseudonymize_user_id(user_id, pseudonym_key)
+                    user_keys[user_id] = user_key
+                for mbid, name in artists:
+                    pending.append((user_key, mbid, name, 1))
+                    artist_credits_seen += 1
+                if len(pending) >= batch_size:
+                    connection.executemany(INSERT_USER_ARTIST_SQL, pending)
+                    connection.commit()
+                    pending.clear()
+
+    if pending:
+        connection.executemany(INSERT_USER_ARTIST_SQL, pending)
+        connection.commit()
+    return finalize_aggregate_db(connection, rows_seen, rows_with_mbid, artist_credits_seen)
 
 
 def load_targets(coverage_path: Path) -> dict[str, dict[str, str]]:
@@ -270,12 +400,17 @@ def compute_similarities(
         shrinkage_factor = common_count / (common_count + config.shrinkage)
         score = cosine * shrinkage_factor
         target = targets[seed_mbid]
+        candidate_name = (
+            targets.get(candidate_mbid, {}).get("artist_name") or names.get(candidate_mbid, "")
+        )
+        if not candidate_name:
+            # A multi-artist credit can supply several MBIDs without the
+            # individual names. Do not show an unidentifiable recommendation.
+            continue
         row = {
             "seed_artist_name": target.get("artist_name", ""),
             "seed_artist_mbid": seed_mbid,
-            "candidate_artist_name": (
-                targets.get(candidate_mbid, {}).get("artist_name") or names.get(candidate_mbid, "")
-            ),
+            "candidate_artist_name": candidate_name,
             "candidate_artist_mbid": candidate_mbid,
             "similarity_score": round(score, 6),
             "cosine_similarity": round(cosine, 6),
@@ -365,6 +500,7 @@ def compute_similarities(
 
 def write_summary(path: Path, dump_stats: dict[str, int], summary: dict[str, Any]) -> None:
     top_k = summary["config"]["limit"]
+    mbid_rate = dump_stats["rows_with_artist_mbid"] / dump_stats["dump_rows"]
     lines = [
         "# Phase 0 similarity report",
         "",
@@ -372,6 +508,7 @@ def write_summary(path: Path, dump_stats: dict[str, int], summary: dict[str, Any
         "",
         f"- ダンプ内listen行数: {dump_stats['dump_rows']:,}",
         f"- Artist MBID付きlisten行数: {dump_stats['rows_with_artist_mbid']:,}",
+        f"- Artist MBID利用率: {mbid_rate:.1%}",
         f"- 集計対象ユーザー数: {dump_stats['users']:,}",
         f"- 集計対象アーティスト数: {dump_stats['artists']:,}",
         f"- 50組のうち期間内リスナーあり: {summary['target_artists_with_listeners']}/{summary['target_artist_count']}",
@@ -386,13 +523,20 @@ def write_summary(path: Path, dump_stats: dict[str, int], summary: dict[str, Any
 
 
 def run(
-    archive: Path,
+    archive: Path | None,
     coverage: Path,
     report_dir: Path,
     work_db: Path,
     config: SimilarityConfig,
+    spark_archive: Path | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    dump_stats = create_aggregate_db(archive, work_db)
+    if (archive is None) == (spark_archive is None):
+        raise ValueError("Provide exactly one of archive or spark_archive")
+    dump_stats = (
+        create_spark_aggregate_db(spark_archive, work_db)
+        if spark_archive is not None
+        else create_aggregate_db(archive, work_db)  # type: ignore[arg-type]
+    )
     targets = load_targets(coverage)
     rows, summary = compute_similarities(work_db, targets, config)
     report_dir.mkdir(parents=True, exist_ok=True)
@@ -408,7 +552,9 @@ def run(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Calculate artist similarity from a ListenBrainz dump")
-    parser.add_argument("--archive", type=Path, required=True)
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--spark-archive", type=Path, help="Mapped ListenBrainz Spark .tar or directory")
+    source.add_argument("--archive", type=Path, help="Raw ListenBrainz listens .tar.zst (lower coverage)")
     parser.add_argument("--coverage", type=Path, default=DEFAULT_COVERAGE)
     parser.add_argument("--report-dir", type=Path, default=DEFAULT_REPORT_DIR)
     parser.add_argument("--work-db", type=Path, default=DEFAULT_WORK_DB)
@@ -427,7 +573,14 @@ def main() -> None:
         min_common_listeners=args.min_common_listeners,
         limit=args.limit,
     )
-    _, result = run(args.archive, args.coverage, args.report_dir, args.work_db, config)
+    _, result = run(
+        args.archive,
+        args.coverage,
+        args.report_dir,
+        args.work_db,
+        config,
+        spark_archive=args.spark_archive,
+    )
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
