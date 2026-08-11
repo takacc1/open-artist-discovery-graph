@@ -476,13 +476,17 @@ artist_facts
 artist_edges
 - source_artist_id
 - target_artist_id
+- rank
 - total_score
 - behavior_score
 - metadata_score
 - relation_score
 - confidence_score
 - common_listener_bucket
+- recommendation_source
+- window_days
 - model_version
+- generated_at
 
 edge_evidence
 - edge_id
@@ -815,27 +819,27 @@ ListenBrainzにおける日本の小規模アーティストの被覆率が低�
 
 ### Phase 0：データ実現性検証（1〜2週間）
 
-- [ ] MusicBrainz JSONサンプルの取込
-- [ ] ListenBrainzの開発用小規模データ、または限定期間サンプルの取込
-- [ ] MBID名寄せ処理
-- [ ] 50アーティストの被覆率調査
-- [ ] cosine＋shrinkage、セッション共起、implicit ALSの比較
-- [ ] 上位推薦を人手評価
-- [ ] データ源・フィールド・ライセンス台帳の作成
-- [ ] ListenBrainz生データ処理のプライバシー影響評価
-- [ ] Go / No-Go判定
+- [x] MusicBrainz JSONサンプルの取込
+- [x] ListenBrainzの開発用小規模データ、または限定期間サンプルの取込
+- [x] MBID名寄せ処理
+- [x] 50アーティストの被覆率調査
+- [x] cosine＋shrinkage、セッション共起、implicit ALSの比較
+- [x] 上位推薦を人手評価
+- [x] データ源・フィールド・ライセンス台帳の作成
+- [x] ListenBrainz生データ処理のプライバシー影響評価
+- [x] Go / No-Go判定
 
 成果物：検証Notebook、被覆率レポート、代表推薦一覧、ライセンス台帳。
 
 ### Phase 1：データ基盤MVP（2週間）
 
-- [ ] ETLを再実行可能なCLIにする
+- [x] ETLを再実行可能なCLIにする
 - [ ] MusicBrainzのリダイレクト・別名処理
-- [ ] ユーザー×アーティスト集計
-- [ ] cosine＋shrinkage類似度
-- [ ] 各アーティスト上位30辺の出力
-- [ ] データ版・チェックサム管理
-- [ ] スキーマ検査と品質検査
+- [x] ユーザー×アーティスト集計
+- [x] cosine＋shrinkage類似度
+- [x] 各アーティスト上位30〜50辺の出力
+- [x] データ版・チェックサム管理
+- [x] スキーマ検査と品質検査
 
 成果物：`artists.parquet`、`artist_edges.parquet`、`provenance.json`。
 

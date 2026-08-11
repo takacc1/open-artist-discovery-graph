@@ -27,6 +27,7 @@ WIKIDATA_SPARQL_URL = "https://query.wikidata.org/sparql"
 
 DEFAULT_INPUT = Path("data/validation_artists.csv")
 DEFAULT_REPORT_DIR = Path("reports")
+BASELINE_ARTIST_COUNT = 50
 
 
 def normalize_name(value: str) -> str:
@@ -365,8 +366,11 @@ GROUP BY ?mbid
 def read_rows(path: Path) -> list[dict[str, str]]:
     with path.open(encoding="utf-8", newline="") as handle:
         rows = list(csv.DictReader(handle))
-    if len(rows) != 50:
-        raise ValueError(f"Expected exactly 50 validation artists, found {len(rows)} in {path}")
+    if len(rows) < BASELINE_ARTIST_COUNT:
+        raise ValueError(
+            f"Expected at least {BASELINE_ARTIST_COUNT} validation artists, "
+            f"found {len(rows)} in {path}"
+        )
     names = [normalize_name(row["artist_name"]) for row in rows]
     if len(set(names)) != len(names):
         raise ValueError("Validation artist names must be unique after Unicode normalization")

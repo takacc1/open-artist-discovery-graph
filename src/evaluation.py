@@ -23,18 +23,20 @@ def build_evaluation_rows(
     validation_rows: list[dict[str, str]],
     category: str,
 ) -> list[dict[str, Any]]:
-    target_names = {
-        row["artist_name"]
+    targets = {
+        row["artist_name"]: row
         for row in validation_rows
         if row.get("category", "").strip() == category
     }
     result: list[dict[str, Any]] = []
     for row in similarity_rows:
-        if row.get("seed_artist_name") not in target_names:
+        seed_name = row.get("seed_artist_name", "")
+        if seed_name not in targets:
             continue
         result.append(
             {
-                "seed_artist_name": row.get("seed_artist_name", ""),
+                "seed_artist_name": seed_name,
+                "primary_genre": targets[seed_name].get("primary_genre", "") or "",
                 "rank": row.get("rank", ""),
                 "candidate_artist_name": row.get("candidate_artist_name", ""),
                 "candidate_artist_mbid": row.get("candidate_artist_mbid", ""),

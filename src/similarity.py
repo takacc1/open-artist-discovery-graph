@@ -36,6 +36,12 @@ class SimilarityConfig:
     limit: int = 10
 
 
+def similarity_output_name(limit: int) -> str:
+    if limit <= 0:
+        raise ValueError("limit must be positive")
+    return f"similarity_top{limit}.csv"
+
+
 def artist_records(listen: dict[str, Any]) -> list[tuple[str, str]]:
     """Return MBID/name pairs without reading or returning a ListenBrainz username."""
     metadata = listen.get("track_metadata") or {}
@@ -267,6 +273,7 @@ def create_spark_aggregate_db(
     spark_sources: Path | list[Path],
     database: Path,
     batch_size: int = 100_000,
+    progress_interval: int = 5_000_000,
 ) -> dict[str, int]:
     """Aggregate ListenBrainz Spark rows using its mapped artist-credit MBIDs."""
     if arrow_dataset is None:
@@ -310,6 +317,10 @@ def create_spark_aggregate_db(
                     connection.executemany(INSERT_USER_ARTIST_SQL, pending)
                     connection.commit()
                     pending.clear()
+            if progress_interval > 0 and rows_seen // progress_interval != (
+                rows_seen - record_batch.num_rows
+            ) // progress_interval:
+                print(f"Aggregate: {rows_seen:,} listen rows", flush=True)
 
     if pending:
         connection.executemany(INSERT_USER_ARTIST_SQL, pending)
@@ -319,17 +330,213 @@ def create_spark_aggregate_db(
     return stats
 
 
-def load_targets(coverage_path: Path) -> dict[str, dict[str, str]]:
+def load_targets(
+    coverage_path: Path, category: str | None = None
+) -> dict[str, dict[str, str]]:
     with coverage_path.open(encoding="utf-8", newline="") as handle:
         rows = list(csv.DictReader(handle))
     targets: dict[str, dict[str, str]] = {}
     for row in rows:
+        if category is not None and row.get("category", "").strip() != category:
+            continue
         mbid = row.get("resolved_mbid", "").strip().lower()
         if mbid:
             targets[mbid] = row
     if not targets:
         raise ValueError(f"No resolved_mbid values found in {coverage_path}")
     return targets
+
+
+def load_spark_manifest(path: Path) -> list[Path]:
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    sources = manifest.get("sources")
+    if not isinstance(sources, list) or not sources:
+        raise ValueError(f"No sources in Spark manifest: {path}")
+    result = []
+    for item in sources:
+        if not isinstance(item, dict) or not str(item.get("path", "")).strip():
+            raise ValueError(f"Invalid source in Spark manifest: {item!r}")
+        result.append(Path(str(item["path"])))
+    return result
+
+
+def summarize_similarity_rows(
+    targets: dict[str, dict[str, str]],
+    rows: list[dict[str, Any]],
+    listener_counts: dict[str, int],
+    selected_users: int,
+    config: SimilarityConfig,
+) -> dict[str, Any]:
+    expected_hits_all = 0
+    evaluated_all = 0
+    expected_hits_available = 0
+    evaluated_available = 0
+    seed_summaries: list[dict[str, Any]] = []
+    for seed_mbid, target in targets.items():
+        expected = {
+            normalize_name(name)
+            for name in target.get("expected_similar", "").split("|")
+            if name.strip()
+        }
+        candidate_rows = [row for row in rows if row["seed_artist_mbid"] == seed_mbid]
+        returned_names = {normalize_name(row["candidate_artist_name"]) for row in candidate_rows}
+        hit_names = sorted(expected & returned_names)
+        if expected:
+            evaluated_all += 1
+            expected_hits_all += bool(hit_names)
+            if candidate_rows:
+                evaluated_available += 1
+                expected_hits_available += bool(hit_names)
+        seed_summaries.append(
+            {
+                "artist_name": target.get("artist_name", ""),
+                "mbid": seed_mbid,
+                "listener_count_in_window": listener_counts.get(seed_mbid, 0),
+                "recommendation_count": len(candidate_rows),
+                "expected_hit": bool(hit_names),
+                "expected_hit_names": hit_names,
+            }
+        )
+
+    return {
+        "target_artist_count": len(targets),
+        "target_artists_with_listeners": sum(
+            listener_counts.get(mbid, 0) > 0 for mbid in targets
+        ),
+        "target_listener_union": selected_users,
+        "target_artists_with_recommendations": sum(
+            item["recommendation_count"] > 0 for item in seed_summaries
+        ),
+        "expected_top10_hit_rate_all_targets": (
+            round(expected_hits_all / evaluated_all, 4) if evaluated_all else None
+        ),
+        "expected_top10_hit_rate_with_recommendations": (
+            round(expected_hits_available / evaluated_available, 4)
+            if evaluated_available
+            else None
+        ),
+        "expected_hit_count": expected_hits_all,
+        "expected_evaluated_all_count": evaluated_all,
+        "expected_evaluated_available_count": evaluated_available,
+        "config": {
+            "listen_cap": config.listen_cap,
+            "shrinkage": config.shrinkage,
+            "min_common_listeners": config.min_common_listeners,
+            "limit": config.limit,
+        },
+        "artists": seed_summaries,
+    }
+
+
+def compute_similarities_sequential(
+    database: Path,
+    targets: dict[str, dict[str, str]],
+    config: SimilarityConfig,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Compute the same cosine+shrinkage score one seed at a time to cap memory use."""
+    connection = sqlite3.connect(database)
+    target_mbids = set(targets)
+
+    norms_squared: dict[str, float] = defaultdict(float)
+    listener_counts: dict[str, int] = defaultdict(int)
+    for mbid, listen_count in connection.execute(
+        "SELECT artist_mbid, listen_count FROM user_artist"
+    ):
+        value = weight(listen_count, config.listen_cap)
+        norms_squared[mbid] += value * value
+        listener_counts[mbid] += 1
+
+    names: dict[str, str] = {}
+    name_query = """
+        SELECT artist_mbid, artist_name, SUM(listen_count) AS total_listens
+        FROM user_artist
+        WHERE artist_name <> ''
+        GROUP BY artist_mbid, artist_name
+        ORDER BY artist_mbid, total_listens DESC, artist_name COLLATE NOCASE
+    """
+    for mbid, name, _total in connection.execute(name_query):
+        names.setdefault(mbid, name)
+
+    rows: list[dict[str, Any]] = []
+    pair_query = """
+        SELECT seed.listen_count, candidate.artist_mbid, candidate.listen_count
+        FROM user_artist AS seed
+        JOIN user_artist AS candidate ON candidate.user_key = seed.user_key
+        WHERE seed.artist_mbid = ?
+    """
+    for seed_number, (seed_mbid, target) in enumerate(targets.items(), 1):
+        dots: dict[str, float] = defaultdict(float)
+        common: dict[str, int] = defaultdict(int)
+        for seed_count, candidate_mbid, candidate_count in connection.execute(
+            pair_query, (seed_mbid,)
+        ):
+            if candidate_mbid == seed_mbid:
+                continue
+            dots[candidate_mbid] += weight(seed_count, config.listen_cap) * weight(
+                candidate_count, config.listen_cap
+            )
+            common[candidate_mbid] += 1
+
+        candidates: list[dict[str, Any]] = []
+        for candidate_mbid, dot in dots.items():
+            common_count = common[candidate_mbid]
+            if common_count < config.min_common_listeners:
+                continue
+            denominator = math.sqrt(
+                norms_squared[seed_mbid] * norms_squared[candidate_mbid]
+            )
+            if denominator <= 0:
+                continue
+            candidate_name = (
+                targets.get(candidate_mbid, {}).get("artist_name")
+                or names.get(candidate_mbid, "")
+            )
+            if not candidate_name or not valid_candidate_name(candidate_name):
+                continue
+            cosine = dot / denominator
+            shrinkage_factor = common_count / (common_count + config.shrinkage)
+            candidates.append(
+                {
+                    "seed_artist_name": target.get("artist_name", ""),
+                    "seed_artist_mbid": seed_mbid,
+                    "candidate_artist_name": candidate_name,
+                    "candidate_artist_mbid": candidate_mbid,
+                    "similarity_score": round(cosine * shrinkage_factor, 6),
+                    "cosine_similarity": round(cosine, 6),
+                    "shrinkage_factor": round(shrinkage_factor, 6),
+                    "common_listener_count": common_count,
+                    "candidate_listener_count": listener_counts[candidate_mbid],
+                    "confidence": confidence_label(common_count),
+                    "reason": f"共通リスナー{common_count}人の聴取傾向が近い",
+                }
+            )
+        candidates.sort(
+            key=lambda row: (
+                row["similarity_score"],
+                row["common_listener_count"],
+                row["candidate_artist_mbid"],
+            ),
+            reverse=True,
+        )
+        for rank, row in enumerate(candidates[: config.limit], 1):
+            row["rank"] = rank
+            rows.append(row)
+        print(
+            f"Similarity: {seed_number}/{len(targets)} {target.get('artist_name', '')}",
+            flush=True,
+        )
+
+    placeholders = ",".join("?" for _ in target_mbids)
+    selected_users = connection.execute(
+        f"SELECT COUNT(DISTINCT user_key) FROM user_artist "
+        f"WHERE artist_mbid IN ({placeholders})",
+        tuple(target_mbids),
+    ).fetchone()[0]
+    connection.close()
+    rows.sort(key=lambda row: (row["seed_artist_name"].casefold(), row["rank"]))
+    return rows, summarize_similarity_rows(
+        targets, rows, listener_counts, selected_users, config
+    )
 
 
 def weight(listen_count: int, cap: int) -> float:
@@ -342,6 +549,11 @@ def confidence_label(common_listeners: int) -> str:
     if common_listeners >= 10:
         return "medium"
     return "low"
+
+
+def valid_candidate_name(name: str) -> bool:
+    """Exclude aggregate or placeholder credits that are not recommendable artists."""
+    return normalize_name(name) not in {"unknown", "unknownartist", "variousartists"}
 
 
 def compute_similarities(
@@ -423,7 +635,7 @@ def compute_similarities(
         candidate_name = (
             targets.get(candidate_mbid, {}).get("artist_name") or names.get(candidate_mbid, "")
         )
-        if not candidate_name:
+        if not candidate_name or not valid_candidate_name(candidate_name):
             # A multi-artist credit can supply several MBIDs without the
             # individual names. Do not show an unidentifiable recommendation.
             continue
@@ -533,9 +745,9 @@ def write_summary(path: Path, dump_stats: dict[str, int], summary: dict[str, Any
         f"- Artist MBID利用率: {mbid_rate:.1%}",
         f"- 集計対象ユーザー数: {dump_stats['users']:,}",
         f"- 集計対象アーティスト数: {dump_stats['artists']:,}",
-        f"- 50組のうち期間内リスナーあり: {summary['target_artists_with_listeners']}/{summary['target_artist_count']}",
-        f"- 50組のうち推薦を出せた数: {summary['target_artists_with_recommendations']}/{summary['target_artist_count']}",
-        f"- 手入力した期待候補のTop {top_k} hit率（50組全体）: {summary['expected_top10_hit_rate_all_targets']:.1%}",
+        f"- {summary['target_artist_count']}組のうち期間内リスナーあり: {summary['target_artists_with_listeners']}/{summary['target_artist_count']}",
+        f"- {summary['target_artist_count']}組のうち推薦を出せた数: {summary['target_artists_with_recommendations']}/{summary['target_artist_count']}",
+        f"- 手入力した期待候補のTop {top_k} hit率（全{summary['target_artist_count']}組）: {summary['expected_top10_hit_rate_all_targets']:.1%}",
         f"- 手入力した期待候補のTop {top_k} hit率（推薦を出せた組のみ）: {summary['expected_top10_hit_rate_with_recommendations']:.1%}",
         "",
         "このhit率は正解率そのものではなく、手入力した少数の参考候補が上位に入った割合です。期間やデータ量が少ないアーティストは低信頼になりやすい点に注意してください。",
@@ -560,9 +772,40 @@ def run(
         else create_aggregate_db(archive, work_db)  # type: ignore[arg-type]
     )
     targets = load_targets(coverage)
-    rows, summary = compute_similarities(work_db, targets, config)
+    # The target-user batch implementation is fast for small samples but can
+    # retain many candidate pairs in memory. Production-sized windows use the
+    # indexed, seed-by-seed implementation to keep memory bounded.
+    rows, summary = compute_similarities_sequential(work_db, targets, config)
     report_dir.mkdir(parents=True, exist_ok=True)
-    write_csv(report_dir / "similarity_top10.csv", rows)
+    write_csv(report_dir / similarity_output_name(config.limit), rows)
+    result = {"dump": dump_stats, "similarity": summary}
+    (report_dir / "similarity_summary.json").write_text(
+        json.dumps(result, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    write_summary(report_dir / "similarity_summary.md", dump_stats, summary)
+    return rows, result
+
+
+def run_from_database(
+    coverage: Path,
+    report_dir: Path,
+    work_db: Path,
+    config: SimilarityConfig,
+    dump_stats_json: Path,
+    category: str | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Recompute target similarities without rebuilding the aggregate database."""
+    if not work_db.exists():
+        raise FileNotFoundError(f"Aggregate database not found: {work_db}")
+    previous = json.loads(dump_stats_json.read_text(encoding="utf-8"))
+    dump_stats = previous.get("dump")
+    if not isinstance(dump_stats, dict):
+        raise ValueError(f"Missing dump statistics in {dump_stats_json}")
+    targets = load_targets(coverage, category)
+    rows, summary = compute_similarities_sequential(work_db, targets, config)
+    report_dir.mkdir(parents=True, exist_ok=True)
+    write_csv(report_dir / similarity_output_name(config.limit), rows)
     result = {"dump": dump_stats, "similarity": summary}
     (report_dir / "similarity_summary.json").write_text(
         json.dumps(result, ensure_ascii=False, indent=2) + "\n",
@@ -581,14 +824,34 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="+",
         help="One or more mapped ListenBrainz Spark .tar files or directories",
     )
+    source.add_argument(
+        "--spark-manifest",
+        type=Path,
+        help="Manifest JSON created by src.listenbrainz_window",
+    )
     source.add_argument("--archive", type=Path, help="Raw ListenBrainz listens .tar.zst (lower coverage)")
+    source.add_argument(
+        "--reuse-work-db",
+        action="store_true",
+        help="Reuse --work-db and only recompute similarities for the current coverage targets",
+    )
     parser.add_argument("--coverage", type=Path, default=DEFAULT_COVERAGE)
     parser.add_argument("--report-dir", type=Path, default=DEFAULT_REPORT_DIR)
     parser.add_argument("--work-db", type=Path, default=DEFAULT_WORK_DB)
+    parser.add_argument(
+        "--dump-stats-json",
+        type=Path,
+        default=DEFAULT_REPORT_DIR / "similarity_summary.json",
+        help="Previous similarity JSON containing dump statistics when --reuse-work-db is used",
+    )
     parser.add_argument("--listen-cap", type=int, default=100)
     parser.add_argument("--shrinkage", type=float, default=10.0)
     parser.add_argument("--min-common-listeners", type=int, default=2)
     parser.add_argument("--limit", type=int, default=10)
+    parser.add_argument(
+        "--category",
+        help="Only include coverage rows with this category (supported with --reuse-work-db)",
+    )
     return parser
 
 
@@ -600,14 +863,28 @@ def main() -> None:
         min_common_listeners=args.min_common_listeners,
         limit=args.limit,
     )
-    _, result = run(
-        args.archive,
-        args.coverage,
-        args.report_dir,
-        args.work_db,
-        config,
-        spark_archive=args.spark_archive,
-    )
+    spark_archive = args.spark_archive
+    if args.spark_manifest is not None:
+        spark_archive = load_spark_manifest(args.spark_manifest)
+
+    if args.reuse_work_db:
+        _, result = run_from_database(
+            args.coverage,
+            args.report_dir,
+            args.work_db,
+            config,
+            args.dump_stats_json,
+            args.category,
+        )
+    else:
+        _, result = run(
+            args.archive,
+            args.coverage,
+            args.report_dir,
+            args.work_db,
+            config,
+            spark_archive=spark_archive,
+        )
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 

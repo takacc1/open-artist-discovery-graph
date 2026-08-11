@@ -1,19 +1,33 @@
 # Open Artist Discovery Graph — Phase 0
 
-画面開発の前に、50組の代表アーティストでデータ被覆率と同名誤結合を検証するための最小構成です。
+画面開発の前に、50組の基礎検証、15組のクロスジャンル検証、26組の若者向け人気アーティスト検証で、データ被覆率・同名誤結合・推薦品質を確認するための構成です。
 
 ## 現在の成果物
 
-- `data/validation_artists.csv`: 検証用50組、期待する近傍、名寄せ用ヒント（K-POPヨジャドル10組を含む）
+- `data/validation_artists.csv`: 基礎50組、クロスジャンル15組、若者向け人気26組の期待近傍と名寄せ用ヒント
 - `data/source_fields.csv`: MVPで使うフィールドと使わないフィールドの台帳
 - `notebooks/01_data_feasibility.ipynb`: MusicBrainz、ListenBrainz、Wikidataの被覆率検証
 - `src/feasibility.py`: NotebookからもCLIからも使える再実行可能な取得処理
-- `tests/test_feasibility.py`: 50組の一意性と同名候補のスコアリング検査
+- `tests/test_feasibility.py`: 90組の一意性、検証枠、同名候補のスコアリング検査
 - `src/similarity.py`: ListenBrainzダンプからcosine類似度＋shrinkageを計算
+- `src/listenbrainz_window.py`: 公式ミラーから連続した日次Spark増分を選び、SHA-256検証付きで30日窓を保存
+- `src/recommendation_fallback.py`: 30日を基本に、低データ時は90日、未計算時はオンデマンド計算へ振り分け
+- `src/serving_db.py`: アーティストとTop候補をグラフ形式で保存し、検索・単一近傍・複数シード推薦を実行
+- `src/window_revaluation.py`: 期間を広げたTop 10と前回評価を照合し、新候補だけの再評価表を生成
+- `src/window_revaluation_metrics.py`: 30日版260候補の採点を集計し、7日版との差とデータ量別品質を出力
 - `notebooks/02_similarity_prototype.ipynb`: 類似度計算を再実行するNotebook入口
 - `tests/test_similarity.py`: MBID抽出、log変換、信頼度区分の検査
 - `src/evaluation.py`: K-POP候補を人が0・1・2で採点するCSVを生成
 - `tests/test_evaluation.py`: 評価対象カテゴリと空の採点欄を検査
+- `src/evaluation_metrics.py`: 採点結果からPrecision@5/10とNDCG@10を集計
+- `src/algorithm_comparison.py`: 同じ採点済み候補をcosine、30分セッション共起、implicit ALSで再順位付け
+- `src/full_retrieval.py`: 3方式が独自に取得したTop 10を統合し、方式名を隠した追加採点表を生成
+- `src/full_retrieval_metrics.py`: 独自Top 10と採点済み和集合を照合し、方式別のPrecisionとNDCGを集計
+- `src/cross_genre_evaluation.py`: クロスジャンル15組の順位を隠した採点表と照合キーを生成
+- `src/cross_genre_metrics.py`: 採点済み150候補を元順位へ戻し、全体・ジャンル別・データ量別に集計
+- `src/youth_popular_evaluation.py`: 若者向け人気26組の順位を隠した採点表と照合キーを生成
+- `src/youth_popular_metrics.py`: 採点済み220候補を元順位へ戻し、市場・ジャンル・データ量別に集計
+- `data/*human_ratings.csv`: 人手評価のローカル入力。個人の音楽嗜好と自由記述を含むためGitHubには公開しない
 - `docs/phase0_similarity_findings.md`: 実データでの初回結果と次の判断
 - `docs/identity_review.md`: 50組のMBID監査と同名候補の判断記録
 
@@ -48,6 +62,21 @@ python -m src.similarity \
   --spark-archive /path/to/day-1-spark-dump.tar /path/to/day-2-spark-dump.tar
 ```
 
+公式ミラーから直近の連続30日を取得して再計算する場合は次を使います。同じ日付のアーカイブは再利用し、公式SHA-256と一致しないファイルは採用しません。
+
+```bash
+python -m src.listenbrainz_window \
+  --days 30 \
+  --output-dir /path/to/listenbrainz-spark-30d
+
+python -m src.similarity \
+  --spark-manifest /path/to/listenbrainz-spark-30d/manifest.json \
+  --coverage reports/artist_coverage.csv \
+  --report-dir reports/30d \
+  --work-db /path/to/listenbrainz_artist_similarity_30d.sqlite3 \
+  --limit 50
+```
+
 処理は、再生数をユーザー×Artist MBIDで集計し、100回を上限に `log(1 + count)` へ変換します。そのベクトルのcosine類似度に `共通リスナー数 / (共通リスナー数 + 10)` を掛け、少人数だけで一致した候補を下げます。
 
 出力は次の3ファイルです。
@@ -58,6 +87,74 @@ python -m src.similarity \
 
 `expected_similar` はAPIから得た正解ではなく、結果評価用にこちらで手入力した参考候補です。Top 10に含まれた割合を診断値として出します。
 
+## 30日・90日のフォールバック
+
+本番では30日分の行動類似度を基本にし、入力アーティストのリスナーが30人未満、または候補を生成できない場合だけ90日分へ切り替えます。90日でも候補がなければ、行動類似度と同じ得点として扱わず、MusicBrainz／Wikidataを使う `metadata_fallback` として分けます。
+
+2026-08-12時点の公式日次増分ミラーは30日分を保持しており、今回すぐ作れた最長窓は2026-07-13〜2026-08-11です。直近の全量Sparkダンプは約191GBでローカル空き容量を超えるため、90日版は未作成です。今後は日次増分を保存して60日・90日へ伸ばし、それまでは30日で30人未満のアーティストを `metadata_fallback` 対象にします。
+
+30日版と90日版をそれぞれ計算した後、次で公開用の結果を選択できます。
+
+```bash
+python -m src.recommendation_fallback \
+  --primary-rows reports/30d/similarity_top50.csv \
+  --primary-summary reports/30d/similarity_summary.json \
+  --extended-rows reports/90d/similarity_top50.csv \
+  --extended-summary reports/90d/similarity_summary.json \
+  --output-dir reports/serving
+```
+
+保存される辺は「サカナクションなら常にくるり」という固定ルールではなく、特定の集計期間・モデル版で計算したTop 50のキャッシュです。モデル更新時に順位を入れ替えます。未計算アーティストがリクエストされた場合は、MusicBrainzでMBIDを解決して計算待ちへ入れ、データがあれば30日または90日でオンデマンド計算し、なければメタデータ推薦またはデータ不足を返します。
+
+## 推薦用グラフDB
+
+`src.serving_db` は、アーティストを点、Top候補を有向辺としてSQLiteへ保存するPhase 1用のローカル実装です。本番のPostgreSQLへ移しやすいよう、アーティスト本体、類似辺、モデル版、入力ファイルのチェックサムを別テーブルにしています。個人の聴取履歴は保存しません。
+
+現在の有効モデルである30日版は次で再構築できます。
+
+```bash
+python -m src.serving_db build \
+  --database reports/serving/artist_discovery.sqlite3 \
+  --coverage reports/artist_coverage.csv \
+  --similarity reports/30d/similarity_top50.csv \
+  --model-version cosine-shrinkage-30d-v1 \
+  --window-days 30
+```
+
+30日版は90入力アーティストすべてにTop 50を生成し、4,500辺を有効モデルとして保存します。既存7日版860辺はモデル比較とロールバック用に無効状態で残るため、現在のSQLite全体は1,978アーティスト・5,360辺です。DBファイルは生成物としてGit管理しません。
+
+若者向け26組の30日版Top 10は、前回と同じ113候補の評価を引き継ぎ、新候補147件を追加採点しました。集計は次で再実行できます。
+
+```bash
+python -m src.window_revaluation_metrics
+```
+
+260候補すべての結果は、推薦生成率100%、緩いP@10 91.5%、厳しいP@10 52.7%、厳しいP@5 63.1%、NDCG@10 89.9%、評価0率8.5%で、4つのMVP基準を満たし `PASS` です。7日版より40候補増えて生成率が15.4ポイント改善し、厳しいP@5も7.6ポイント上がりました。
+
+ただし、30日でもリスナー30人未満の8組は、緩いP@10 76.3%、評価0率23.8%で基準未達です。100人以上の13組は緩いP@10 100%、評価0件でした。この差から、30人未満は低信頼表示とMusicBrainz／Wikidata補完へ回します。
+
+```bash
+# 名前検索
+python -m src.serving_db search \
+  --database reports/serving/artist_discovery.sqlite3 \
+  --query サカナクション
+
+# 単一アーティストの近傍
+python -m src.serving_db neighbors \
+  --database reports/serving/artist_discovery.sqlite3 \
+  --mbid 01830cc1-8a04-4dfb-9e4a-d557dfda6a93
+
+# 3組を統合した「橋渡し」推薦
+python -m src.serving_db recommend \
+  --database reports/serving/artist_discovery.sqlite3 \
+  --seed-mbid 01830cc1-8a04-4dfb-9e4a-d557dfda6a93 \
+  --seed-mbid dfc6a151-3792-4695-8fda-f64723eaa788 \
+  --seed-mbid 338f5d97-3133-4bf8-a58e-068ff9b5405d \
+  --mode bridge
+```
+
+現在のモード別統合式はAPI接続を確認するための初期実装です。`near`は最も強い類似関係、`bridge`は複数シードへの接続率、`adventure`は信頼度を保ちながら近すぎない候補を加点します。モード別品質はWeb公開前に別途人手評価します。
+
 K-POPヨジャドル10組の候補を人が評価するシートは次で作成します。
 
 ```bash
@@ -66,9 +163,119 @@ python -m src.evaluation
 
 `reports/kpop_recommendation_evaluation.csv` の `human_rating_0_1_2` に、`2=かなり納得`、`1=意外だがあり`、`0=違う`を入力します。
 
+採点後の集計は次で実行します。
+
+```bash
+python -m src.evaluation_metrics
+```
+
+3方式の比較には、類似度計算で作った匿名化済み作業DBと同じ7日分のSparkダンプを使います。
+
+```bash
+python -m src.algorithm_comparison \
+  --spark-archive /path/to/day-1.tar /path/to/day-2.tar /path/to/day-3.tar
+```
+
+比較は、採点済み100候補を各方式で再順位付けする実験です。30分以上の空白でセッションを区切り、共起cosineに少数セッション向けshrinkageを掛けます。ALSは64因子、15反復、正則化0.1、alpha 20、乱数seed 42を既定値にしています。
+
+出力は次の3ファイルです。
+
+- `reports/kpop_algorithm_comparison.csv`: 候補ごとの3方式のスコアと順位
+- `reports/kpop_algorithm_comparison.json`: 方式別指標、実行条件、bootstrap結果
+- `reports/kpop_algorithm_comparison.md`: 読みやすい比較表
+
+同じ候補集合なのでPrecision@10は方式間で変わりません。順位差はPrecision@5とNDCG@10で判断します。完全な検索性能比較には、各方式が独自に取得したTop 10の和集合を追加採点します。
+
+独自Top 10の和集合を作る完全比較の準備は次で実行します。
+
+```bash
+python -m src.full_retrieval \
+  --spark-archive /path/to/day-1.tar /path/to/day-2.tar /path/to/day-3.tar
+```
+
+出力は次の3ファイルです。
+
+- `reports/kpop_full_retrieval_evaluation.csv`: 方式名と順位を隠した採点表
+- `reports/kpop_full_retrieval_key.csv`: 採点後に照合する方式別順位とスコア
+- `reports/kpop_full_retrieval_summary.json`: 候補数、重複率、実行条件
+
+採点表は候補順を入力アーティストごとに固定乱数で混ぜ、以前の採点を自動的に引き継ぎます。`needs_rating=yes`の行だけ追加採点します。
+
+採点済みデータを `data/kpop_full_retrieval_human_ratings.csv` に保存した後、完全比較は次で実行します。
+
+```bash
+python -m src.full_retrieval_metrics
+```
+
+今回の結果は、cosine＋shrinkageが厳しいPrecision@5 58%、Precision@10 46%、NDCG@10 87.75%、セッション共起が46%、43%、88.43%、implicit ALSが36%、38%、86.67%でした。セッション共起のNDCG差はcosine比+0.67ポイントですが、bootstrap 95% CIは-2.36〜+3.94ポイントで優位とはいえません。上位の強い候補率、計算量、実装の単純さを合わせ、MVPにはcosine＋shrinkageを採用します。
+
+## クロスジャンル15組の追加検証
+
+ユーザーが実際に聴くアーティストから、ポップ4、ロック／オルタナ2、ヒップホップ2、R&B2、電子音楽2、クラシック／劇伴2、ジャズ1を追加しました。日本5組、海外10組です。
+
+MusicBrainzのMBIDは15/15を確認して固定し、ListenBrainzデータも15/15で取得できました。既存の匿名集計済み7日DBから再計算すると、15組すべてにTop 10を出力できました。
+
+```bash
+python -m src.similarity \
+  --reuse-work-db \
+  --work-db /private/tmp/listenbrainz_artist_similarity.sqlite3 \
+  --coverage reports/artist_coverage.csv \
+  --report-dir reports/cross_genre \
+  --dump-stats-json reports/similarity_summary.json \
+  --category cross_genre_validation
+
+python -m src.evaluation \
+  --similarity reports/cross_genre/similarity_top10.csv \
+  --output reports/cross_genre/recommendation_evaluation.csv \
+  --category cross_genre_validation
+
+python -m src.cross_genre_evaluation
+```
+
+採点表は150候補の順位・類似度・共通リスナー数を隠し、入力アーティストごとに固定乱数で並べ替えています。採点済みデータは `data/cross_genre_human_ratings.csv` に保存し、次で元順位へ戻して集計します。
+
+```bash
+python -m src.cross_genre_metrics
+```
+
+150件すべてを採点し、評価2が74件、評価1が70件、評価0が6件でした。緩いPrecision@10は96.0%、厳しいPrecision@10は49.3%、厳しいPrecision@5は56.0%、NDCG@10は91.7%です。事前基準の「緩いP@10 80%以上」「厳しいP@5 40%以上」「評価0率10%未満」をすべて満たしたため、クロスジャンルでもMVP成立判定は `PASS` です。
+
+ジャンル別では電子音楽・R&B・ポップが強く、クラシック／劇伴は厳しいP@5が30%でした。特に久石譲は評価0が3件あり、作曲家・演奏家・オーケストラの候補タイプ制御が改善点です。低データ群はMichel CamiloとSTUTSの2組だけなので、データ量による差はまだ一般化しません。
+
+## 若者向け人気26組の追加検証
+
+ユーザー指定のJ-POP／ロック19組とK-POP7組を `youth_popular_validation` として追加しました。MusicBrainzは26/26を本人確認してMBIDを固定し、ListenBrainz統計APIでも26/26に過去データがあり、同名誤結合は0件です。
+
+既存の7日分匿名DBで類似度を計算すると、24/26組に期間内リスナーがあり、22/26組でTop 10を作れました。3Houseとヤングスキニーは期間内0人、マルシィは1人、おいしくるメロンパンは2人だったため、少人数だけの一致を推薦しない条件により候補を出していません。残る22組・220候補を盲検採点対象にしています。
+
+```bash
+python -m src.similarity \
+  --reuse-work-db \
+  --work-db /private/tmp/listenbrainz_artist_similarity.sqlite3 \
+  --coverage reports/artist_coverage.csv \
+  --report-dir reports/youth_popular \
+  --dump-stats-json reports/similarity_summary.json \
+  --category youth_popular_validation
+
+python -m src.evaluation \
+  --similarity reports/youth_popular/similarity_top10.csv \
+  --output reports/youth_popular/recommendation_evaluation.csv \
+  --category youth_popular_validation
+
+python -m src.youth_popular_evaluation
+
+python -m src.youth_popular_metrics
+```
+
+手入力した参考候補のTop 10 hit率は全26組基準で50.0%です。これは正解率ではなく、既知の候補を最低限再現できたかを見る診断値です。
+
+220候補をすべて0・1・2で盲検採点した結果、評価2が101件、評価1が107件、評価0が12件でした。推薦生成率84.6%、緩いPrecision@10は94.5%、厳しいPrecision@10は45.9%、厳しいPrecision@5は55.5%、NDCG@10は91.8%、評価0率は5.5%です。事前に定めた4基準をすべて満たし、若者向け公開対象でもMVP成立判定は `PASS` です。
+
+K-POP7組は緩いP@10が100%、厳しいP@5が74.3%、評価0が0件でした。国内15組は緩いP@10が92.0%、厳しいP@5が46.7%、評価0率が8.0%です。一方、7日間リスナー30人未満の群は評価0率12.2%まで悪化したため、公開時は期間延長またはメタデータによるフォールバックを入れます。Top 10を作れなかった3House、ヤングスキニー、マルシィ、おいしくるメロンパンの4組は、精度指標へ無理に含めず推薦生成率として別評価しています。
+
 ## 同名誤結合の確認
 
-自動検索で得たMBIDは、人が確認するまで本人と断定しません。今回は50組すべてを確認し、`data/validation_artists.csv` の `manual_mbid` に固定済みです。再確認するときは `reports/artist_coverage.csv` の次の列を使います。
+自動検索で得たMBIDは、人が確認するまで本人と断定しません。現在の90組はすべて確認し、`data/validation_artists.csv` の `manual_mbid` に固定済みです。基礎50組の詳細監査は `docs/identity_review.md` にあり、追加枠も同じ列で確認しています。
 
 - `resolved_mbid`
 - `resolved_name`

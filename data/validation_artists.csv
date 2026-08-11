@@ -1,4 +1,4 @@
-artist_name,expected_similar,category,expected_country,expected_type,expected_ended,disambiguation_hint,manual_identity_status,notes,manual_mbid
+artist_name,expected_similar,category,expected_country,expected_type,expected_ended,disambiguation_hint,manual_identity_status,notes,manual_mbid,primary_genre
 サカナクション,くるり|cero|SUPERCAR,major_japan,JP,Group,false,,confirmed,,01830cc1-8a04-4dfb-9e4a-d557dfda6a93
 くるり,サカナクション|スピッツ|NUMBER GIRL,major_japan,JP,Group,false,,confirmed,,252c9f8a-be04-4146-b73e-a24696b2f5ed
 ASIAN KUNG-FU GENERATION,BUMP OF CHICKEN|NUMBER GIRL|ELLEGARDEN,major_japan,JP,Group,false,,confirmed,,14e410f5-97f2-48ba-b1f7-a3a44cbea05c
@@ -45,7 +45,47 @@ NMIXX,ITZY|aespa|Kep1er,kpop_girl_group,KR,Group,false,South Korean girl group,c
 ITZY,NMIXX|aespa|EVERGLOW,kpop_girl_group,KR,Group,false,South Korean girl group,confirmed,,bce172fc-51bb-43f7-9a25-b406a0a581d5
 (G)I-DLE,BLACKPINK|MAMAMOO|LE SSERAFIM,kpop_girl_group,KR,Group,false,South Korean girl group,confirmed,MusicBrainzのハイフン表記差を確認,0068ae6c-7156-40f9-a81f-39294af6a549
 藤井風,宇多田ヒカル|Vaundy|SIRUP,newer_japan,JP,Person,false,Japanese singer-songwriter,confirmed,,c3a4aeca-8f02-4d22-b1ff-693434ab09a8
-tuki.,Ado|りりあ。|優里,newer_japan,JP,Person,false,Japanese singer-songwriter,confirmed,,1359dfb8-8220-4ebe-aeb9-b759ed737c41
+tuki.,Ado|りりあ。|優里,youth_popular_validation,JP,Person,false,Japanese singer-songwriter,confirmed,,1359dfb8-8220-4ebe-aeb9-b759ed737c41,pop
 muque,羊文学|chilldspot|DURDN,newer_japan,JP,Group,false,Japanese band,confirmed,,23e7c092-a83f-40e7-8367-e4edd4ee9f38
 PAS TASTA,chelmico|Dos Monos|Snail's House,newer_japan,JP,Group,false,Japanese music collective,confirmed,,7a15b5b3-04f7-489b-8311-d8e5cf3de178
 新しい学校のリーダーズ,CHAI|Wednesday Campanella|ATARASHII GAKKO!,newer_japan,JP,Group,false,Japanese dance and vocal group,confirmed,MusicBrainzでの正式表記と英語別名を確認,12a43a61-e31a-4cac-92a6-c95ce9cdfe3c
+Ado,yama|Eve|ずっと真夜中でいいのに。,cross_genre_validation,JP,Person,false,Japanese singer,confirmed,,e134b52f-2e9e-4734-9bc3-bea9648d1fa1,pop
+Ariana Grande,Justin Bieber|The Weeknd|Taylor Swift,cross_genre_validation,US,Person,false,American singer,confirmed,,f4fdbb4c-e4b7-47a0-b83b-d91bbfcfa387,pop
+Michael Jackson,Bruno Mars|The Weeknd|Prince,cross_genre_validation,US,Person,true,American singer,confirmed,,f27ec8db-af05-4f36-916e-3d57f91ecf5e,pop
+One Direction,Justin Bieber|Maroon 5|OneRepublic,cross_genre_validation,GB,Group,true,English-Irish boy band,confirmed,MusicBrainzでは国コード未登録のため説明で本人確認,1a425bbd-cca4-4b2c-aeb7-71cb176c828a,pop
+King Gnu,Vaundy|millennium parade|Official髭男dism,cross_genre_validation,JP,Group,false,Japanese band,confirmed,,338f5d97-3133-4bf8-a58e-068ff9b5405d,rock_alternative
+Twenty One Pilots,OneRepublic|Imagine Dragons|Fall Out Boy,cross_genre_validation,US,Group,false,American duo,confirmed,,a6c6897a-7415-4f8d-b5a5-3a5e05f3be67,rock_alternative
+Creepy Nuts,STUTS|Kendrick Lamar|Eminem,cross_genre_validation,JP,Group,false,Japanese hip-hop duo,confirmed,,e5e045da-59a3-4b65-8bb4-3c7f3ac9a529,hiphop
+Eminem,Kendrick Lamar|Dr. Dre|50 Cent,cross_genre_validation,US,Person,false,American rapper,confirmed,,b95ce3ff-3d05-4e87-9e01-c97b66af13d4,hiphop
+The Weeknd,Ariana Grande|Michael Jackson|Bruno Mars,cross_genre_validation,CA,Person,false,Canadian singer,confirmed,,c8b03190-306c-4120-bb0b-6f2ebfc06ea9,rnb
+keshi,Joji|The Weeknd|NIKI,cross_genre_validation,US,Person,false,American singer-songwriter,confirmed,,ee74db56-c264-4c23-9504-29e2d8078f36,rnb
+STUTS,Creepy Nuts|PUNPEE|KID FRESINO,cross_genre_validation,JP,Person,false,Japanese producer,confirmed,,24d981dd-836e-4eff-9e19-16b8e77166d8,electronic
+Alan Walker,Avicii|Marshmello|The Chainsmokers,cross_genre_validation,NO,Person,false,Norwegian-British producer,confirmed,,b0e4bc50-3062-4d31-afad-def6a6b7a8e9,electronic
+久石譲,Ryuichi Sakamoto|葉加瀬太郎|John Williams,cross_genre_validation,JP,Person,false,Japanese composer,confirmed,,44c64a30-1d58-49c5-b314-6e02fba49526,classical_soundtrack
+Frédéric Chopin,Franz Liszt|Claude Debussy|Sergei Rachmaninoff,cross_genre_validation,PL,Person,true,Polish composer,confirmed,MusicBrainz正式名はFryderyk Chopin,09ff1fe8-d61c-4b98-bb82-18487c74d7b7,classical_soundtrack
+Michel Camilo,Chick Corea|Hiromi|Christian McBride,cross_genre_validation,DO,Person,false,Dominican jazz pianist,confirmed,MusicBrainzの国コードはUSだが本人確認済み,57829f93-1815-436e-8e9e-55eb788a6f54,jazz
+Official髭男dism,King Gnu|Mrs. GREEN APPLE|sumika,youth_popular_validation,JP,Group,false,Japanese pop rock band,confirmed,,6dddd7a2-5583-49d0-a8b2-9ee46d04f27e,pop_rock
+カネヨリマサル,SHISHAMO|Hump Back|ねぐせ。,youth_popular_validation,JP,Group,false,Japanese rock band,confirmed,,1e7d6740-8548-4e13-98e0-f62b92e92524,rock
+マルシィ,Saucy Dog|マカロニえんぴつ|back number,youth_popular_validation,JP,Group,false,Japanese rock band,confirmed,,42e190c2-a289-4b2c-b281-0c38df41a594,pop_rock
+クリープハイプ,My Hair is Bad|indigo la End|Saucy Dog,youth_popular_validation,JP,Group,false,Japanese rock band,confirmed,,3b7bc38c-7e3a-4085-81eb-0440e3b120a7,rock_alternative
+おいしくるメロンパン,indigo la End|ヨルシカ|クリープハイプ,youth_popular_validation,JP,Group,false,Japanese rock band,confirmed,,676f3c01-cf04-46d4-9837-93eaa13a81dc,rock_alternative
+Stray Kids,ATEEZ|ENHYPEN|TOMORROW X TOGETHER,youth_popular_validation,KR,Group,false,South Korean boy group,confirmed,,142b343d-bf5a-428c-a64f-6d1a7566bbe9,kpop
+3House,Yo-Sea|KEIJU|藤井 風,youth_popular_validation,JP,Person,false,Japanese R&B singer,confirmed,,13a82115-3b01-4de7-9909-66c608ebed66,rnb
+NCT,NCT 127|NCT DREAM|SEVENTEEN,youth_popular_validation,KR,Group,false,South Korean boy group,confirmed,,9c15986d-ff1f-4d91-9708-f50f7445884f,kpop
+CORTIS,BOYNEXTDOOR|TWS|TOMORROW X TOGETHER,youth_popular_validation,KR,Group,false,South Korean boy group,confirmed,,d27808c8-d3a6-4bbe-acc2-22d5e19f3bca,kpop
+平井 大,清水翔太|優里|Nissy,youth_popular_validation,JP,Person,false,Japanese singer-songwriter,confirmed,,d04b4d86-222f-4bcd-86d7-c70d33ebd41c,pop
+wacci,スキマスイッチ|Official髭男dism|back number,youth_popular_validation,JP,Group,false,Japanese pop rock band,confirmed,,d6c24e43-b65b-4544-af61-b9757b81617e,pop_rock
+ヨルシカ,ずっと真夜中でいいのに。|YOASOBI|Eve,youth_popular_validation,JP,Group,false,Japanese rock duo,confirmed,,dfc6a151-3792-4695-8fda-f64723eaa788,rock_alternative
+sumika,Official髭男dism|go!go!vanillas|フレデリック,youth_popular_validation,JP,Group,false,Japanese rock band,confirmed,,bc731e96-0c06-4adf-b94b-ca636f48998a,pop_rock
+BIGBANG,2NE1|G-DRAGON|EXO,youth_popular_validation,KR,Group,false,South Korean boy group,confirmed,,ec2bcb77-b9a1-49e2-bfe7-419586bbef48,kpop
+TREASURE,BIGBANG|SEVENTEEN|ENHYPEN,youth_popular_validation,KR,Group,false,South Korean boy group,confirmed,,6a64307a-1806-428c-9bee-4afb13b27042,kpop
+あいみょん,優里|Ado|back number,youth_popular_validation,JP,Person,false,Japanese singer-songwriter,confirmed,,908d9ac2-5187-4b9e-b281-601c6afb0791,pop
+SEKAI NO OWARI,Official髭男dism|Mrs. GREEN APPLE|RADWIMPS,youth_popular_validation,JP,Group,false,Japanese pop band,confirmed,,d9dbfe6a-8346-4337-8614-fe96aab63927,pop
+SEVENTEEN,BTS|NCT|TOMORROW X TOGETHER,youth_popular_validation,KR,Group,false,South Korean boy group,confirmed,,e04d239e-9fa8-49b3-b9b7-9e439c3cb1d1,kpop
+ゆず,コブクロ|スキマスイッチ|いきものがかり,youth_popular_validation,JP,Group,false,Japanese folk pop duo,confirmed,,d796574f-db13-41d2-9dd7-82a55c5bd71f,folk_pop
+ずっと真夜中でいいのに。,ヨルシカ|YOASOBI|Eve,youth_popular_validation,JP,Group,false,Japanese rock project,confirmed,,14d2a235-30e2-489f-b490-f9dc7d2c0861,rock_alternative
+BTS,SEVENTEEN|EXO|TOMORROW X TOGETHER,youth_popular_validation,KR,Group,false,South Korean boy group,confirmed,,0d79fe8e-ba27-4859-bb8c-2f255f346853,kpop
+WANIMA,04 Limited Sazabys|HEY-SMITH|10-FEET,youth_popular_validation,JP,Group,false,Japanese punk rock band,confirmed,,050d8767-afca-4d49-bd23-c0cbee4c1608,punk_rock
+マカロニえんぴつ,Saucy Dog|sumika|Official髭男dism,youth_popular_validation,JP,Group,false,Japanese rock band,confirmed,,c65f10b6-be99-4e3a-a010-2a11fd965780,pop_rock
+Saucy Dog,マカロニえんぴつ|back number|My Hair is Bad,youth_popular_validation,JP,Group,false,Japanese rock band,confirmed,,76c63dd7-96d1-42d9-a596-4d576a464008,rock
+ヤングスキニー,ねぐせ。|マルシィ|Saucy Dog,youth_popular_validation,JP,Group,false,Japanese rock band,confirmed,,119d0892-1c1d-4b83-893b-3cabc993d1bf,rock

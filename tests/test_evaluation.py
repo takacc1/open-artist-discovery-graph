@@ -22,12 +22,17 @@ class EvaluationTests(unittest.TestCase):
             },
         ]
         validation = [
-            {"artist_name": "aespa", "category": "kpop_girl_group"},
+            {
+                "artist_name": "aespa",
+                "category": "kpop_girl_group",
+                "primary_genre": "kpop",
+            },
             {"artist_name": "Radiohead", "category": "international"},
         ]
         rows = build_evaluation_rows(similarity, validation, "kpop_girl_group")
         self.assertEqual(1, len(rows))
         self.assertEqual("IVE", rows[0]["candidate_artist_name"])
+        self.assertEqual("kpop", rows[0]["primary_genre"])
         self.assertEqual("", rows[0]["human_rating_0_1_2"])
 
 

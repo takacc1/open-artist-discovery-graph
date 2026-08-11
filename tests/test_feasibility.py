@@ -5,15 +5,49 @@ from src.feasibility import MusicBrainzResolver, normalize_name, read_rows, scor
 
 
 class FeasibilityTests(unittest.TestCase):
-    def test_validation_set_has_exactly_fifty_unique_artists(self) -> None:
+    def test_validation_set_has_baseline_plus_cross_genre_artists(self) -> None:
         rows = read_rows(Path("data/validation_artists.csv"))
-        self.assertEqual(50, len(rows))
+        self.assertEqual(90, len(rows))
+        self.assertEqual(90, len({normalize_name(row["artist_name"]) for row in rows}))
 
     def test_validation_set_contains_kpop_girl_group_cohort(self) -> None:
         rows = read_rows(Path("data/validation_artists.csv"))
         kpop_names = {row["artist_name"] for row in rows if row["category"] == "kpop_girl_group"}
         self.assertEqual(10, len(kpop_names))
         self.assertTrue({"aespa", "IVE", "TWICE"}.issubset(kpop_names))
+
+    def test_validation_set_contains_balanced_cross_genre_cohort(self) -> None:
+        rows = read_rows(Path("data/validation_artists.csv"))
+        cross_genre = [row for row in rows if row["category"] == "cross_genre_validation"]
+        self.assertEqual(15, len(cross_genre))
+        genre_counts = {}
+        for row in cross_genre:
+            genre = row["primary_genre"]
+            genre_counts[genre] = genre_counts.get(genre, 0) + 1
+        self.assertEqual(
+            {
+                "pop": 4,
+                "rock_alternative": 2,
+                "hiphop": 2,
+                "rnb": 2,
+                "electronic": 2,
+                "classical_soundtrack": 2,
+                "jazz": 1,
+            },
+            genre_counts,
+        )
+
+    def test_validation_set_contains_youth_popular_cohort(self) -> None:
+        rows = read_rows(Path("data/validation_artists.csv"))
+        youth = [row for row in rows if row["category"] == "youth_popular_validation"]
+        self.assertEqual(26, len(youth))
+        self.assertTrue(
+            {"tuki.", "Official髭男dism", "Stray Kids", "NCT", "CORTIS"}.issubset(
+                {row["artist_name"] for row in youth}
+            )
+        )
+        self.assertTrue(all(row["manual_identity_status"] == "confirmed" for row in youth))
+        self.assertTrue(all(row["manual_mbid"] for row in youth))
 
     def test_name_normalization_handles_width_case_and_punctuation(self) -> None:
         self.assertEqual(normalize_name("ＢＯØＷＹ"), normalize_name("boøwy"))
