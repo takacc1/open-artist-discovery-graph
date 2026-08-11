@@ -64,6 +64,7 @@ class ServingDatabaseTests(unittest.TestCase):
         stats = database_stats(self.database)
         self.assertEqual(5, stats["artist_count"])
         self.assertEqual(4, stats["edge_count"])
+        self.assertEqual(4, stats["evidence_count"])
         self.assertEqual("test-v1", stats["active_model"])
         neighbors = get_neighbors(self.database, "seed-a")
         self.assertEqual(["Shared", "Only A"], [row["artist_name"] for row in neighbors])

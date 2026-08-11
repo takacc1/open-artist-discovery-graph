@@ -74,6 +74,25 @@ ON artist_edges (source_artist_id, model_version, rank);
 CREATE INDEX IF NOT EXISTS artist_edges_by_target
 ON artist_edges (target_artist_id, model_version);
 
+CREATE TABLE IF NOT EXISTS edge_evidence (
+    source_artist_id INTEGER NOT NULL,
+    target_artist_id INTEGER NOT NULL,
+    model_version TEXT NOT NULL,
+    evidence_type TEXT NOT NULL,
+    evidence_value TEXT NOT NULL,
+    evidence_score REAL NOT NULL DEFAULT 0,
+    source_name TEXT NOT NULL,
+    PRIMARY KEY (
+        source_artist_id, target_artist_id, model_version, evidence_type, source_name
+    ),
+    FOREIGN KEY (source_artist_id, target_artist_id, model_version)
+        REFERENCES artist_edges (source_artist_id, target_artist_id, model_version)
+        ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS edge_evidence_by_edge
+ON edge_evidence (source_artist_id, target_artist_id, model_version);
+
 CREATE TABLE IF NOT EXISTS source_registry (
     source_name TEXT NOT NULL,
     source_path TEXT NOT NULL,
@@ -284,6 +303,48 @@ def build_database(
                         imported_at,
                     ),
                 )
+                common_listeners = int(row.get("common_listener_count") or 0)
+                if common_listeners > 0:
+                    connection.execute(
+                        """
+                        INSERT INTO edge_evidence (
+                            source_artist_id, target_artist_id, model_version,
+                            evidence_type, evidence_value, evidence_score, source_name
+                        ) VALUES (?, ?, ?, 'common_listener_count', ?, ?, 'ListenBrainz')
+                        ON CONFLICT DO UPDATE SET
+                            evidence_value = excluded.evidence_value,
+                            evidence_score = excluded.evidence_score
+                        """,
+                        (
+                            source_id,
+                            target_id,
+                            model_version,
+                            str(common_listeners),
+                            float(row.get("cosine_similarity") or row["similarity_score"]),
+                        ),
+                    )
+                metadata_evidence = (row.get("metadata_evidence") or "").strip()
+                if metadata_evidence and metadata_evidence != "{}":
+                    # Validate before storing so the API never receives malformed evidence.
+                    json.loads(metadata_evidence)
+                    connection.execute(
+                        """
+                        INSERT INTO edge_evidence (
+                            source_artist_id, target_artist_id, model_version,
+                            evidence_type, evidence_value, evidence_score, source_name
+                        ) VALUES (?, ?, ?, 'metadata', ?, ?, 'metadata_fallback')
+                        ON CONFLICT DO UPDATE SET
+                            evidence_value = excluded.evidence_value,
+                            evidence_score = excluded.evidence_score
+                        """,
+                        (
+                            source_id,
+                            target_id,
+                            model_version,
+                            metadata_evidence,
+                            float(row.get("metadata_score") or 0),
+                        ),
+                    )
                 edge_count += 1
 
         for source_path in [coverage_csv, *similarity_csvs]:
@@ -311,6 +372,11 @@ def build_database(
                 "SELECT COUNT(*) FROM artist_edges WHERE model_version = ?", (model_version,)
             ).fetchone()[0]
         )
+        stored_evidence_count = int(
+            connection.execute(
+                "SELECT COUNT(*) FROM edge_evidence WHERE model_version = ?", (model_version,)
+            ).fetchone()[0]
+        )
     return {
         "database": str(database),
         "model_version": model_version,
@@ -320,6 +386,7 @@ def build_database(
         "source_artist_count": len(grouped),
         "imported_edge_count": edge_count,
         "stored_edge_count": stored_edge_count,
+        "stored_evidence_count": stored_evidence_count,
     }
 
 
@@ -520,6 +587,9 @@ def database_stats(database: Path) -> dict[str, Any]:
             "active_model": model,
             "artist_count": int(connection.execute("SELECT COUNT(*) FROM artists").fetchone()[0]),
             "edge_count": int(connection.execute("SELECT COUNT(*) FROM artist_edges").fetchone()[0]),
+            "evidence_count": int(
+                connection.execute("SELECT COUNT(*) FROM edge_evidence").fetchone()[0]
+            ),
             "active_model_edge_count": int(
                 connection.execute(
                     "SELECT COUNT(*) FROM artist_edges WHERE model_version = ?", (model,)

@@ -1001,6 +1001,18 @@ This service is unofficial and is not endorsed by any artist or streaming provid
 
 この順番なら、UIを完成させた後で「日本のアーティストデータが足りず、推薦できない」と分かる失敗を避けられる。
 
+### 2026年8月12日時点の進捗
+
+- 90組のMBID本人確認、MusicBrainz／ListenBrainz／Wikidata被覆率検証：完了
+- ListenBrainz 30日分、約1.30億行からcosine＋shrinkage Top 50生成：完了
+- K-POP、クロスジャンル、若者向け26組の人手評価：完了、30日版は全体PASS
+- 30人未満向けWikidata／MusicBrainz関係メタデータ補助：実装完了
+- 補助後の新規36候補の人手再評価：未完了
+- SQLiteグラフDB、複数シード推薦の初期APIロジック：完了
+- Web API／画面：未着手
+
+したがって現在地は、当初工程の「推薦品質評価」の最終確認と「DB・推薦API」の初期実装までです。次の判定は新規36候補の採点結果で行い、合格後にHTTP API化へ進みます。
+
 ---
 
 ## 16. 参照した主な公式資料

@@ -29,6 +29,8 @@ reports/kpop_full_retrieval_scored.csv
 reports/cross_genre/
 reports/youth_popular/
 reports/30d/
+reports/metadata/
+reports/serving_metadata/
 *.sqlite3
 outputs/
 
