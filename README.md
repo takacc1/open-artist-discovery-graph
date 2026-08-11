@@ -12,6 +12,8 @@
 - `src/similarity.py`: ListenBrainzダンプからcosine類似度＋shrinkageを計算
 - `notebooks/02_similarity_prototype.ipynb`: 類似度計算を再実行するNotebook入口
 - `tests/test_similarity.py`: MBID抽出、log変換、信頼度区分の検査
+- `src/evaluation.py`: K-POP候補を人が0・1・2で採点するCSVを生成
+- `tests/test_evaluation.py`: 評価対象カテゴリと空の採点欄を検査
 - `docs/phase0_similarity_findings.md`: 実データでの初回結果と次の判断
 - `docs/identity_review.md`: 50組のMBID監査と同名候補の判断記録
 
@@ -43,7 +45,7 @@ MusicBrainzの名寄せ結果 `reports/artist_coverage.csv` と、ListenBrainz�
 
 ```bash
 python -m src.similarity \
-  --spark-archive /path/to/listenbrainz-spark-dump-incremental.tar
+  --spark-archive /path/to/day-1-spark-dump.tar /path/to/day-2-spark-dump.tar
 ```
 
 処理は、再生数をユーザー×Artist MBIDで集計し、100回を上限に `log(1 + count)` へ変換します。そのベクトルのcosine類似度に `共通リスナー数 / (共通リスナー数 + 10)` を掛け、少人数だけで一致した候補を下げます。
@@ -55,6 +57,14 @@ python -m src.similarity \
 - `reports/similarity_summary.md`: 読みやすい要約
 
 `expected_similar` はAPIから得た正解ではなく、結果評価用にこちらで手入力した参考候補です。Top 10に含まれた割合を診断値として出します。
+
+K-POPヨジャドル10組の候補を人が評価するシートは次で作成します。
+
+```bash
+python -m src.evaluation
+```
+
+`reports/kpop_recommendation_evaluation.csv` の `human_rating_0_1_2` に、`2=かなり納得`、`1=意外だがあり`、`0=違う`を入力します。
 
 ## 同名誤結合の確認
 

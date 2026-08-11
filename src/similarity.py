@@ -212,42 +212,59 @@ def create_aggregate_db(archive: Path, database: Path, batch_size: int = 25_000)
     if batch:
         connection.executemany(INSERT_USER_ARTIST_SQL, batch)
         connection.commit()
-    return finalize_aggregate_db(connection, rows_seen, rows_with_mbid, artist_credits_seen)
+    stats = finalize_aggregate_db(connection, rows_seen, rows_with_mbid, artist_credits_seen)
+    stats["source_count"] = 1
+    return stats
 
 
 @contextmanager
-def spark_parquet_paths(source: Path) -> Iterator[list[Path]]:
-    if source.is_dir():
-        paths = sorted(source.rglob("*.parquet"))
-        if not paths:
-            raise ValueError(f"No Parquet files found under {source}")
-        yield paths
+def spark_parquet_paths(sources: Path | list[Path]) -> Iterator[list[Path]]:
+    source_list = [sources] if isinstance(sources, Path) else sources
+    if not source_list:
+        raise ValueError("At least one Spark source is required")
+
+    direct_paths: list[Path] = []
+    archives: list[tuple[Path, list[str]]] = []
+    for source in source_list:
+        if source.is_dir():
+            paths = sorted(source.rglob("*.parquet"))
+            if not paths:
+                raise ValueError(f"No Parquet files found under {source}")
+            direct_paths.extend(paths)
+            continue
+
+        completed = subprocess.run(
+            ["tar", "-tf", str(source)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        members = [line for line in completed.stdout.splitlines() if line.endswith(".parquet")]
+        if not members:
+            raise ValueError(f"No Parquet members found in {source}")
+        for member in members:
+            member_path = Path(member)
+            if member_path.is_absolute() or ".." in member_path.parts:
+                raise ValueError(f"Unsafe archive member: {member}")
+        archives.append((source, members))
+
+    if not archives:
+        yield direct_paths
         return
 
-    completed = subprocess.run(
-        ["tar", "-tf", str(source)],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    members = [line for line in completed.stdout.splitlines() if line.endswith(".parquet")]
-    if not members:
-        raise ValueError(f"No Parquet members found in {source}")
-    for member in members:
-        member_path = Path(member)
-        if member_path.is_absolute() or ".." in member_path.parts:
-            raise ValueError(f"Unsafe archive member: {member}")
-
     with tempfile.TemporaryDirectory(prefix="listenbrainz-spark-", dir="/private/tmp") as temp_dir:
-        subprocess.run(
-            ["tar", "-xf", str(source), "-C", temp_dir, *members],
-            check=True,
-        )
-        yield [Path(temp_dir) / member for member in members]
+        extracted_paths: list[Path] = []
+        for source, members in archives:
+            subprocess.run(
+                ["tar", "-xf", str(source), "-C", temp_dir, *members],
+                check=True,
+            )
+            extracted_paths.extend(Path(temp_dir) / member for member in members)
+        yield direct_paths + extracted_paths
 
 
 def create_spark_aggregate_db(
-    spark_source: Path,
+    spark_sources: Path | list[Path],
     database: Path,
     batch_size: int = 100_000,
 ) -> dict[str, int]:
@@ -255,6 +272,7 @@ def create_spark_aggregate_db(
     if arrow_dataset is None:
         raise RuntimeError("Install Spark dump support with: python -m pip install -r requirements.txt")
 
+    source_count = 1 if isinstance(spark_sources, Path) else len(spark_sources)
     connection = initialize_aggregate_db(database)
     pseudonym_key = os.urandom(32)
     user_keys: dict[int, bytes] = {}
@@ -263,7 +281,7 @@ def create_spark_aggregate_db(
     rows_with_mbid = 0
     artist_credits_seen = 0
 
-    with spark_parquet_paths(spark_source) as paths:
+    with spark_parquet_paths(spark_sources) as paths:
         dataset = arrow_dataset.dataset([str(path) for path in paths], format="parquet")
         columns = ["user_id", "artist_name", "artist_credit_mbids"]
         for record_batch in dataset.to_batches(columns=columns, batch_size=65_536):
@@ -296,7 +314,9 @@ def create_spark_aggregate_db(
     if pending:
         connection.executemany(INSERT_USER_ARTIST_SQL, pending)
         connection.commit()
-    return finalize_aggregate_db(connection, rows_seen, rows_with_mbid, artist_credits_seen)
+    stats = finalize_aggregate_db(connection, rows_seen, rows_with_mbid, artist_credits_seen)
+    stats["source_count"] = source_count
+    return stats
 
 
 def load_targets(coverage_path: Path) -> dict[str, dict[str, str]]:
@@ -501,12 +521,14 @@ def compute_similarities(
 def write_summary(path: Path, dump_stats: dict[str, int], summary: dict[str, Any]) -> None:
     top_k = summary["config"]["limit"]
     mbid_rate = dump_stats["rows_with_artist_mbid"] / dump_stats["dump_rows"]
+    source_count = dump_stats.get("source_count", 1)
     lines = [
         "# Phase 0 similarity report",
         "",
-        "ListenBrainzの1日分増分ダンプをユーザー×アーティストに集計し、log変換した再生数のcosine類似度を共通リスナー数で補正した試作結果です。ユーザー名・ユーザーID・個人別履歴は出力していません。",
+        f"ListenBrainzの増分ダンプ{source_count}個をユーザー×アーティストに集計し、log変換した再生数のcosine類似度を共通リスナー数で補正した試作結果です。ユーザー名・ユーザーID・個人別履歴は出力していません。",
         "",
         f"- ダンプ内listen行数: {dump_stats['dump_rows']:,}",
+        f"- 入力ダンプ数: {source_count}",
         f"- Artist MBID付きlisten行数: {dump_stats['rows_with_artist_mbid']:,}",
         f"- Artist MBID利用率: {mbid_rate:.1%}",
         f"- 集計対象ユーザー数: {dump_stats['users']:,}",
@@ -516,7 +538,7 @@ def write_summary(path: Path, dump_stats: dict[str, int], summary: dict[str, Any
         f"- 手入力した期待候補のTop {top_k} hit率（50組全体）: {summary['expected_top10_hit_rate_all_targets']:.1%}",
         f"- 手入力した期待候補のTop {top_k} hit率（推薦を出せた組のみ）: {summary['expected_top10_hit_rate_with_recommendations']:.1%}",
         "",
-        "このhit率は正解率そのものではなく、手入力した少数の参考候補が上位に入った割合です。1日分だけなので、特に邦楽の小規模アーティストは低信頼になりやすい点に注意してください。",
+        "このhit率は正解率そのものではなく、手入力した少数の参考候補が上位に入った割合です。期間やデータ量が少ないアーティストは低信頼になりやすい点に注意してください。",
         "",
     ]
     path.write_text("\n".join(lines), encoding="utf-8")
@@ -528,7 +550,7 @@ def run(
     report_dir: Path,
     work_db: Path,
     config: SimilarityConfig,
-    spark_archive: Path | None = None,
+    spark_archive: list[Path] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     if (archive is None) == (spark_archive is None):
         raise ValueError("Provide exactly one of archive or spark_archive")
@@ -553,7 +575,12 @@ def run(
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Calculate artist similarity from a ListenBrainz dump")
     source = parser.add_mutually_exclusive_group(required=True)
-    source.add_argument("--spark-archive", type=Path, help="Mapped ListenBrainz Spark .tar or directory")
+    source.add_argument(
+        "--spark-archive",
+        type=Path,
+        nargs="+",
+        help="One or more mapped ListenBrainz Spark .tar files or directories",
+    )
     source.add_argument("--archive", type=Path, help="Raw ListenBrainz listens .tar.zst (lower coverage)")
     parser.add_argument("--coverage", type=Path, default=DEFAULT_COVERAGE)
     parser.add_argument("--report-dir", type=Path, default=DEFAULT_REPORT_DIR)

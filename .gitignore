@@ -11,4 +11,5 @@ reports/coverage_summary.md
 reports/similarity_top10.csv
 reports/similarity_summary.json
 reports/similarity_summary.md
+reports/kpop_recommendation_evaluation.csv
 *.sqlite3
