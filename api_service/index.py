@@ -264,8 +264,43 @@ def recommend(seed_mbids: list[str], *, mode: str, limit: int) -> dict[str, Any]
         seed_ids = list(seed_by_id)
         rows = connection.execute(
             """
+            WITH outgoing_seed_ids AS (
+                SELECT DISTINCT source_artist_id
+                FROM artist_edges
+                WHERE source_artist_id = ANY(%s)
+                  AND model_version = %s
+            ), candidate_edges AS (
+                SELECT
+                    edge.source_artist_id AS seed_artist_id,
+                    edge.target_artist_id AS candidate_artist_id,
+                    edge.total_score,
+                    edge.confidence,
+                    edge.recommendation_source,
+                    edge.window_days
+                FROM artist_edges AS edge
+                WHERE edge.source_artist_id = ANY(%s)
+                  AND edge.model_version = %s
+
+                UNION ALL
+
+                SELECT
+                    edge.target_artist_id AS seed_artist_id,
+                    edge.source_artist_id AS candidate_artist_id,
+                    edge.total_score,
+                    edge.confidence,
+                    edge.recommendation_source,
+                    edge.window_days
+                FROM artist_edges AS edge
+                WHERE edge.target_artist_id = ANY(%s)
+                  AND edge.model_version = %s
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM outgoing_seed_ids
+                      WHERE outgoing_seed_ids.source_artist_id = edge.target_artist_id
+                  )
+            )
             SELECT
-                edge.source_artist_id,
+                edge.seed_artist_id AS source_artist_id,
                 target.artist_id AS target_artist_id,
                 target.mbid AS target_mbid,
                 target.name AS target_name,
@@ -273,12 +308,17 @@ def recommend(seed_mbids: list[str], *, mode: str, limit: int) -> dict[str, Any]
                 edge.confidence,
                 edge.recommendation_source,
                 edge.window_days
-            FROM artist_edges AS edge
-            JOIN artists AS target ON target.artist_id = edge.target_artist_id
-            WHERE edge.source_artist_id = ANY(%s)
-              AND edge.model_version = %s
+            FROM candidate_edges AS edge
+            JOIN artists AS target ON target.artist_id = edge.candidate_artist_id
             """,
-            (seed_ids, selected_model),
+            (
+                seed_ids,
+                selected_model,
+                seed_ids,
+                selected_model,
+                seed_ids,
+                selected_model,
+            ),
         ).fetchall()
 
     seed_id_set = set(seed_ids)

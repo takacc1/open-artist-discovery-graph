@@ -248,6 +248,8 @@ uvicorn src.api:app --reload --host 127.0.0.1 --port 8000
 
 この例はaespa・IVE・TWICEの3組に共通してつながる候補を返します。実データの動作確認では、ITZY、LE SSERAFIM、NMIXX、Red Velvet、NewJeansが上位5組でした。MBID形式、入力1〜5組、取得件数1〜50をAPI側で検証し、存在しないMBIDは `missing_seed_mbids` で返します。DBの場所は `ARTIST_DISCOVERY_DB`、画面の許可元は `ARTIST_DISCOVERY_CORS_ORIGINS` 環境変数で変更できます。
 
+選択したアーティストに出方向の推薦辺がない場合は、同じモデル内の入方向の辺を逆向きに利用します。これにより、Mr.Childrenのように類似先からは参照されているものの自身のTop 50を持たないアーティストでも、空結果にせず推薦できます。
+
 公開画面からの検索では、選択済みアーティスト、モード、推薦結果、任意の3段階評価だけを保存します。氏名、メールアドレス、入力途中の検索語、個人の聴取履歴は保存しません。
 
 K-POPヨジャドル10組の候補を人が評価するシートは次で作成します。
