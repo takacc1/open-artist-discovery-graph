@@ -34,6 +34,7 @@ reports/serving_metadata/
 reports/serving_metadata_expanded/
 reports/serving_metadata_evidence_v2/
 reports/metadata_fallback_expanded/
+reports/metadata_evidence_v2/
 *.sqlite3
 outputs/
 
