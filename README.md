@@ -228,7 +228,9 @@ uvicorn src.api:app --reload --host 127.0.0.1 --port 8000
 | GET | `/artists/search?q=aespa` | 名前でアーティストを検索 |
 | GET | `/artists/{mbid}` | アーティスト基本情報を取得 |
 | GET | `/artists/{mbid}/neighbors` | 1組の近いアーティストを取得 |
-| POST | `/recommendations` | 1〜5組を統合して推薦 |
+| POST | `/recommendations` | 1〜5組を統合して推薦し、匿名の検索記録を保存 |
+| GET | `/searches/recent` | 最近の匿名検索と推薦上位3組を取得 |
+| POST | `/searches/{search_id}/feedback` | 推薦への3段階評価（0〜2）を保存 |
 | GET | `/data-version` | 有効モデル・期間・辺数を取得 |
 
 複数シード推薦の入力例です。
@@ -246,6 +248,8 @@ uvicorn src.api:app --reload --host 127.0.0.1 --port 8000
 ```
 
 この例はaespa・IVE・TWICEの3組に共通してつながる候補を返します。実データの動作確認では、ITZY、LE SSERAFIM、NMIXX、Red Velvet、NewJeansが上位5組でした。MBID形式、入力1〜5組、取得件数1〜50をAPI側で検証し、存在しないMBIDは `missing_seed_mbids` で返します。DBの場所は `ARTIST_DISCOVERY_DB`、画面の許可元は `ARTIST_DISCOVERY_CORS_ORIGINS` 環境変数で変更できます。
+
+公開画面からの検索では、選択済みアーティスト、モード、推薦結果、任意の3段階評価だけを保存します。氏名、メールアドレス、入力途中の検索語、個人の聴取履歴は保存しません。
 
 K-POPヨジャドル10組の候補を人が評価するシートは次で作成します。
 

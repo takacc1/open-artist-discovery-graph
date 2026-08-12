@@ -10,6 +10,7 @@ import psycopg
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
 from pydantic import BaseModel, Field
 
 
@@ -74,11 +75,36 @@ class RecommendationRequest(BaseModel):
 
 
 class RecommendationResponse(BaseModel):
+    search_id: UUID | None = None
     mode: Literal["near", "bridge", "adventure"]
     model_version: str
     seed_count: int
     missing_seed_mbids: list[str]
     recommendations: list[RecommendationItem]
+
+
+class FeedbackRequest(BaseModel):
+    rating: Literal[0, 1, 2]
+
+
+class PublicSeed(BaseModel):
+    mbid: str
+    name: str
+
+
+class PublicRecommendation(BaseModel):
+    artist_mbid: str
+    artist_name: str
+    score: float
+
+
+class RecentSearch(BaseModel):
+    search_id: UUID
+    mode: Literal["near", "bridge", "adventure"]
+    seed_artists: list[PublicSeed]
+    recommendations: list[PublicRecommendation]
+    feedback_rating: Literal[0, 1, 2] | None = None
+    created_at: str
 
 
 class DataVersionResponse(BaseModel):
@@ -345,6 +371,78 @@ def recommend(seed_mbids: list[str], *, mode: str, limit: int) -> dict[str, Any]
     }
 
 
+def record_search(seed_mbids: list[str], result: dict[str, Any]) -> str:
+    with connect() as connection:
+        rows = connection.execute(
+            "SELECT mbid, name FROM artists WHERE mbid = ANY(%s)",
+            (seed_mbids,),
+        ).fetchall()
+        artist_by_mbid = {str(row["mbid"]): str(row["name"]) for row in rows}
+        seeds = [
+            {"mbid": mbid, "name": artist_by_mbid[mbid]}
+            for mbid in seed_mbids
+            if mbid in artist_by_mbid
+        ]
+        public_recommendations = [
+            {
+                "artist_mbid": str(item["artist_mbid"]),
+                "artist_name": str(item["artist_name"]),
+                "score": float(item["score"]),
+            }
+            for item in result["recommendations"]
+        ]
+        row = connection.execute(
+            """
+            INSERT INTO recommendation_searches (
+                mode, model_version, seed_artists, recommendations
+            ) VALUES (%s, %s, %s, %s)
+            RETURNING search_id::text AS search_id
+            """,
+            (
+                result["mode"],
+                result["model_version"],
+                Jsonb(seeds),
+                Jsonb(public_recommendations),
+            ),
+        ).fetchone()
+    assert row is not None
+    return str(row["search_id"])
+
+
+def get_recent_searches(limit: int) -> list[dict[str, Any]]:
+    with connect() as connection:
+        rows = connection.execute(
+            """
+            SELECT
+                search_id::text AS search_id,
+                mode,
+                seed_artists,
+                recommendations,
+                feedback_rating,
+                created_at::text AS created_at
+            FROM recommendation_searches
+            ORDER BY created_at DESC
+            LIMIT %s
+            """,
+            (limit,),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def record_feedback(search_id: str, rating: int) -> bool:
+    with connect() as connection:
+        row = connection.execute(
+            """
+            UPDATE recommendation_searches
+            SET feedback_rating = %s, feedback_created_at = now()
+            WHERE search_id = %s
+            RETURNING search_id
+            """,
+            (rating, search_id),
+        ).fetchone()
+    return row is not None
+
+
 app = FastAPI(
     title="Open Artist Discovery Graph API",
     version="1.0.0",
@@ -418,7 +516,28 @@ def artist_detail(artist_mbid: UUID) -> dict[str, Any]:
 )
 def recommendations(payload: RecommendationRequest) -> dict[str, Any]:
     seed_mbids = list(dict.fromkeys(str(mbid) for mbid in payload.seed_artist_mbids))
-    return call_database(recommend, seed_mbids, mode=payload.mode, limit=payload.limit)
+    result = call_database(recommend, seed_mbids, mode=payload.mode, limit=payload.limit)
+    result["search_id"] = call_database(record_search, seed_mbids, result)
+    return result
+
+
+@app.get(
+    "/searches/recent",
+    response_model=list[RecentSearch],
+    tags=["feedback"],
+)
+def recent_searches(
+    limit: Annotated[int, Query(ge=1, le=20)] = 8,
+) -> list[dict[str, Any]]:
+    return call_database(get_recent_searches, limit)
+
+
+@app.post("/searches/{search_id}/feedback", tags=["feedback"])
+def feedback(search_id: UUID, payload: FeedbackRequest) -> dict[str, bool]:
+    saved = call_database(record_feedback, str(search_id), payload.rating)
+    if not saved:
+        raise HTTPException(status_code=404, detail="検索履歴が見つかりません。")
+    return {"saved": True}
 
 
 @app.get("/data-version", response_model=DataVersionResponse, tags=["system"])

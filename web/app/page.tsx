@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type Artist = {
   mbid: string;
@@ -29,6 +29,20 @@ type Recommendation = {
 
 type Mode = "near" | "bridge" | "adventure";
 type ApiState = "checking" | "connected" | "preview";
+type FeedbackRating = 0 | 1 | 2;
+
+type RecentSearch = {
+  search_id: string;
+  mode: Mode;
+  seed_artists: Array<{ mbid: string; name: string }>;
+  recommendations: Array<{
+    artist_mbid: string;
+    artist_name: string;
+    score: number;
+  }>;
+  feedback_rating: FeedbackRating | null;
+  created_at: string;
+};
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ??
@@ -87,8 +101,19 @@ function sourceLabel(source: string) {
   return "類似グラフ";
 }
 
+function modeLabel(mode: Mode) {
+  return modeOptions.find((option) => option.id === mode)?.label ?? mode;
+}
+
+function feedbackLabel(rating: FeedbackRating | null) {
+  if (rating === 2) return "よかった";
+  if (rating === 1) return "まあまあ";
+  if (rating === 0) return "合わなかった";
+  return "未回答";
+}
+
 export default function Home() {
-  const [selected, setSelected] = useState<Artist[]>(artists.slice(0, 3));
+  const [selected, setSelected] = useState<Artist[]>([]);
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Artist[]>([]);
   const [mode, setMode] = useState<Mode>("bridge");
@@ -96,6 +121,11 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [apiState, setApiState] = useState<ApiState>("checking");
   const [notice, setNotice] = useState("");
+  const [searchId, setSearchId] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<FeedbackRating | null>(null);
+  const [feedbackSaving, setFeedbackSaving] = useState(false);
+  const [recentSearches, setRecentSearches] = useState<RecentSearch[]>([]);
+  const resultsRef = useRef<HTMLElement>(null);
 
   const selectedIds = useMemo(() => new Set(selected.map((artist) => artist.mbid)), [selected]);
 
@@ -109,6 +139,27 @@ export default function Home() {
       .catch(() => setApiState("preview"));
     return () => controller.abort();
   }, []);
+
+  useEffect(() => {
+    void loadRecentSearches();
+  }, []);
+
+  useEffect(() => {
+    if (recommendations.length === 0) return;
+    window.requestAnimationFrame(() => {
+      resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }, [recommendations.length]);
+
+  async function loadRecentSearches() {
+    try {
+      const response = await fetch(`${API_BASE}/searches/recent?limit=8`);
+      if (!response.ok) return;
+      setRecentSearches(await response.json());
+    } catch {
+      // 履歴が取得できなくても推薦機能はそのまま使えるようにする。
+    }
+  }
 
   useEffect(() => {
     const search = query.trim();
@@ -145,11 +196,15 @@ export default function Home() {
     setQuery("");
     setSearchResults([]);
     setRecommendations([]);
+    setSearchId(null);
+    setFeedback(null);
   }
 
   function removeArtist(mbid: string) {
     setSelected((current) => current.filter((artist) => artist.mbid !== mbid));
     setRecommendations([]);
+    setSearchId(null);
+    setFeedback(null);
   }
 
   async function discover() {
@@ -169,18 +224,42 @@ export default function Home() {
       if (!response.ok) throw new Error("Recommendation failed");
       const payload = await response.json();
       setRecommendations(payload.recommendations);
+      setSearchId(payload.search_id ?? null);
+      setFeedback(null);
       setApiState("connected");
       setNotice(
         payload.recommendations.length
           ? ""
           : "候補がありませんでした。組み合わせを変えてみてください。",
       );
+      void loadRecentSearches();
     } catch {
       setRecommendations(previewRecommendations(selected));
+      setSearchId(null);
+      setFeedback(null);
       setApiState("preview");
       setNotice("API未接続のため、実際のv4確認結果をプレビュー表示しています。");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function submitFeedback(rating: FeedbackRating) {
+    if (!searchId || feedbackSaving) return;
+    setFeedbackSaving(true);
+    try {
+      const response = await fetch(`${API_BASE}/searches/${searchId}/feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rating }),
+      });
+      if (!response.ok) throw new Error("Feedback failed");
+      setFeedback(rating);
+      void loadRecentSearches();
+    } catch {
+      setNotice("回答を保存できませんでした。もう一度お試しください。");
+    } finally {
+      setFeedbackSaving(false);
     }
   }
 
@@ -202,7 +281,6 @@ export default function Home() {
         <div className="hero-shade" aria-hidden="true" />
         <div className="hero-copy">
           <h1>FIND YOUR<br /><em>NEXT SOUND</em></h1>
-          <p className="lead">好きなアーティストから、次の一組へ。</p>
         </div>
         <div className="hero-foot">
           <a href="#discover">START <span aria-hidden="true" /></a>
@@ -269,7 +347,12 @@ export default function Home() {
                 key={option.id}
                 data-mode={option.id}
                 className={mode === option.id ? "mode-card active" : "mode-card"}
-                onClick={() => { setMode(option.id); setRecommendations([]); }}
+                onClick={() => {
+                  setMode(option.id);
+                  setRecommendations([]);
+                  setSearchId(null);
+                  setFeedback(null);
+                }}
                 aria-pressed={mode === option.id}
               >
                 <strong>{option.label}<span aria-hidden="true">→</span></strong>
@@ -280,6 +363,7 @@ export default function Home() {
         </div>
 
         <div className="action-row">
+          <p>選んだ内容と回答は匿名で公開されます。</p>
           <button className="discover-button" onClick={discover} disabled={loading || selected.length === 0}>
             <span>{loading ? "探索中…" : "おすすめを探す"}</span>
             <b aria-hidden="true">↗</b>
@@ -288,11 +372,18 @@ export default function Home() {
       </div>
       </section>
 
-      <section className={recommendations.length ? "results-section visible" : "results-section"} aria-live="polite">
+      <section
+        ref={resultsRef}
+        className={recommendations.length ? "results-section visible" : "results-section"}
+        aria-live="polite"
+      >
         {recommendations.length > 0 && (
           <>
             <div className="results-heading">
-              <h2>おすすめ</h2>
+              <div>
+                <h2>おすすめ</h2>
+                <p>{selected.map((artist) => artist.name).join(" × ")} · {modeLabel(mode)}</p>
+              </div>
               <span>{recommendations.length}組</span>
             </div>
             {notice && <div className={apiState === "preview" ? "notice preview" : "notice"}>{notice}</div>}
@@ -324,9 +415,56 @@ export default function Home() {
                 </article>
               ))}
             </div>
+            {searchId && (
+              <div className="feedback-panel">
+                <h3>おすすめはどうだった？</h3>
+                <div>
+                  {([
+                    [2, "よかった"],
+                    [1, "まあまあ"],
+                    [0, "合わなかった"],
+                  ] as const).map(([rating, label]) => (
+                    <button
+                      key={rating}
+                      className={feedback === rating ? "selected" : ""}
+                      onClick={() => submitFeedback(rating)}
+                      disabled={feedbackSaving}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {feedback !== null && <p>回答ありがとう。</p>}
+              </div>
+            )}
           </>
         )}
       </section>
+
+      <section className="recent-section">
+          <div className="recent-heading">
+            <h2>みんなの検索</h2>
+            <span>匿名</span>
+          </div>
+          {recentSearches.length > 0 ? (
+            <div className="recent-list">
+              {recentSearches.map((search) => (
+              <article key={search.search_id}>
+                <div className="recent-meta">
+                  <span>{modeLabel(search.mode)}</span>
+                  <small>{feedbackLabel(search.feedback_rating)}</small>
+                </div>
+                <h3>{search.seed_artists.map((artist) => artist.name).join(" × ")}</h3>
+                <p>
+                  → {search.recommendations.slice(0, 3).map((artist) => artist.artist_name).join("、") || "候補なし"}
+                </p>
+              </article>
+              ))}
+            </div>
+          ) : (
+            <p className="recent-empty">まだ検索はありません。</p>
+          )}
+        </section>
 
       <footer>
         <div className="brand footer-brand">Open Artist Discovery</div>
