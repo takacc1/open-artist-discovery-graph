@@ -48,12 +48,11 @@ const artists: Artist[] = [
 const modeOptions: Array<{
   id: Mode;
   label: string;
-  kicker: string;
   description: string;
 }> = [
-  { id: "near", label: "近い", kicker: "NEAR", description: "一番強く似ている候補を優先" },
-  { id: "bridge", label: "橋渡し", kicker: "BRIDGE", description: "選んだ全組をつなぐ候補を探す" },
-  { id: "adventure", label: "冒険", kicker: "ADVENTURE", description: "信頼度を保ちながら少し遠くへ" },
+  { id: "near", label: "近い", description: "よく似ている" },
+  { id: "bridge", label: "橋渡し", description: "好みの中間" },
+  { id: "adventure", label: "冒険", description: "少し意外" },
 ];
 
 const previewArtists = artists.slice(3);
@@ -173,8 +172,8 @@ export default function Home() {
       setApiState("connected");
       setNotice(
         payload.recommendations.length
-          ? `${payload.model_version} で ${payload.recommendations.length}組を推薦しました。`
-          : "条件を満たす候補がありませんでした。別の組み合わせを試してください。",
+          ? ""
+          : "候補がありませんでした。組み合わせを変えてみてください。",
       );
     } catch {
       setRecommendations(previewRecommendations(selected));
@@ -192,7 +191,6 @@ export default function Home() {
           Open Artist Discovery
         </a>
         <div className="header-right">
-          <a href="#discover">DISCOVER</a>
           <div className="header-meta">
             <span className={`status-dot ${apiState}`} />
             {apiState === "connected" ? "API LIVE" : apiState === "checking" ? "CHECKING" : "PREVIEW"}
@@ -203,30 +201,20 @@ export default function Home() {
       <section className="hero" id="top">
         <div className="hero-shade" aria-hidden="true" />
         <div className="hero-copy">
-          <p className="eyebrow">EXPLAINABLE MUSIC DISCOVERY / 001</p>
           <h1>FIND YOUR<br /><em>NEXT SOUND</em></h1>
-          <p className="lead">
-            好きなアーティストの交差点から、次の一組へ。
-          </p>
+          <p className="lead">好きなアーティストから、次の一組へ。</p>
         </div>
         <div className="hero-foot">
-          <p>SELECT 3–5 ARTISTS<br />CHOOSE YOUR DIRECTION</p>
-          <a href="#discover">SCROLL <span aria-hidden="true" /></a>
+          <a href="#discover">START <span aria-hidden="true" /></a>
         </div>
       </section>
 
       <section className="discovery-section" id="discover">
-        <div className="section-intro">
-          <p>YOUR TASTE, EXPLAINED.</p>
-          <h2>好きな音楽を重ねて、<br />まだ知らない一組を探す。</h2>
-          <span>聴取傾向と根拠を見ながら、近くも遠くも探索できます。</span>
-        </div>
-
       <div className="discovery-shell" aria-label="推薦条件">
         <div className="step-panel artist-panel">
           <div className="step-heading">
             <span>01</span>
-            <div><p>YOUR TASTE</p><h2>好きなアーティスト</h2></div>
+            <div><h2>好きなアーティスト</h2></div>
             <b>{selected.length} / 5</b>
           </div>
 
@@ -241,7 +229,7 @@ export default function Home() {
           </div>
 
           <div className="search-wrap">
-            <label htmlFor="artist-search">アーティストを追加</label>
+            <label htmlFor="artist-search">追加する</label>
             <div className="search-field">
               <span aria-hidden="true">⌕</span>
               <input
@@ -252,7 +240,6 @@ export default function Home() {
                 disabled={selected.length >= 5}
                 autoComplete="off"
               />
-              <kbd>SEARCH</kbd>
             </div>
             {searchResults.length > 0 && (
               <div className="search-results" role="listbox" aria-label="検索結果">
@@ -274,7 +261,7 @@ export default function Home() {
         <div className="step-panel mode-panel">
           <div className="step-heading">
             <span>02</span>
-            <div><p>DIRECTION</p><h2>探し方を選ぶ</h2></div>
+            <div><h2>探し方</h2></div>
           </div>
           <div className="mode-grid">
             {modeOptions.map((option) => (
@@ -285,7 +272,6 @@ export default function Home() {
                 onClick={() => { setMode(option.id); setRecommendations([]); }}
                 aria-pressed={mode === option.id}
               >
-                <small>{option.kicker}</small>
                 <strong>{option.label}<span aria-hidden="true">→</span></strong>
                 <p>{option.description}</p>
               </button>
@@ -294,10 +280,6 @@ export default function Home() {
         </div>
 
         <div className="action-row">
-          <div>
-            <span>03 / DISCOVER</span>
-            <p>{selected.length < 3 ? `おすすめは3〜5組。あと${3 - selected.length}組選ぶと好みが交差します。` : `${selected.length}組の関係を、${modeOptions.find((item) => item.id === mode)?.label}モードで計算します。`}</p>
-          </div>
           <button className="discover-button" onClick={discover} disabled={loading || selected.length === 0}>
             <span>{loading ? "探索中…" : "おすすめを探す"}</span>
             <b aria-hidden="true">↗</b>
@@ -310,8 +292,8 @@ export default function Home() {
         {recommendations.length > 0 && (
           <>
             <div className="results-heading">
-              <div><p>YOUR NEXT ARTISTS</p><h2>この交差点から見つかった音楽</h2></div>
-              <span>{recommendations.length} RESULTS · {mode.toUpperCase()}</span>
+              <h2>おすすめ</h2>
+              <span>{recommendations.length}組</span>
             </div>
             {notice && <div className={apiState === "preview" ? "notice preview" : "notice"}>{notice}</div>}
             <div className="recommendation-list">
@@ -321,7 +303,6 @@ export default function Home() {
                   <div className="recommendation-main">
                     <div className="card-title-row">
                       <div>
-                        <p>{sourceLabel(item.recommendation_source)} · {item.window_days} DAYS</p>
                         <h3>{item.artist_name}</h3>
                       </div>
                       <div className="fit-score"><strong>{Math.round(item.score * 100)}</strong><span>適合度</span></div>
@@ -329,13 +310,16 @@ export default function Home() {
                     <div className="score-track"><i style={{ width: `${Math.max(8, item.score * 100)}%` }} /></div>
                     <div className="evidence-row">
                       <div className="confidence"><span className={`confidence-mark ${item.confidence}`} />信頼度 {confidenceLabel(item.confidence)}</div>
-                      <p>{item.reason}</p>
                     </div>
-                    <div className="seed-scores">
-                      {item.seed_scores.map((seed) => (
-                        <span key={seed.seed_artist_mbid}>{seed.seed_artist_name}<b>{Math.round(seed.similarity_score * 100)}</b></span>
-                      ))}
-                    </div>
+                    <details className="recommendation-details">
+                      <summary>理由を見る</summary>
+                      <p>{sourceLabel(item.recommendation_source)} · {item.reason}</p>
+                      <div className="seed-scores">
+                        {item.seed_scores.map((seed) => (
+                          <span key={seed.seed_artist_mbid}>{seed.seed_artist_name}<b>{Math.round(seed.similarity_score * 100)}</b></span>
+                        ))}
+                      </div>
+                    </details>
                   </div>
                 </article>
               ))}
@@ -344,25 +328,9 @@ export default function Home() {
         )}
       </section>
 
-      <section className="method-section">
-        <div className="method-photo" aria-hidden="true" />
-        <div className="method-content">
-          <p className="eyebrow">HOW IT WORKS / TRANSPARENT BY DESIGN</p>
-          <div className="method-grid">
-            <h2>推薦の理由まで、<br />見える音楽体験。</h2>
-            <div className="method-copy">
-              <p>ListenBrainzの聴取傾向を匿名集計し、共通リスナーが少ない関係を慎重に補正。データが少ない場合だけ、MusicBrainzとWikidataの構造化情報で補います。</p>
-              <div><span>01</span>個人の聴取履歴は保存しない</div>
-              <div><span>02</span>広いジャンルだけでは推薦しない</div>
-              <div><span>03</span>弱い候補で10件を埋めない</div>
-            </div>
-          </div>
-        </div>
-      </section>
-
       <footer>
         <div className="brand footer-brand">Open Artist Discovery</div>
-        <p>MusicBrainz · ListenBrainz · Wikidata<br />Photos: Christina Chauskin, Austin Edwards / Unsplash</p>
+        <p>Data: MusicBrainz · ListenBrainz · Wikidata<br />Photos: Unsplash</p>
         <a href="#top">TOP ↑</a>
       </footer>
     </main>

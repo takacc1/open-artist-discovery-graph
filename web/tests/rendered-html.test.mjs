@@ -21,7 +21,7 @@ test("server-renders the music discovery product", async () => {
   const html = await response.text();
   assert.match(html, /<html lang="ja">/i);
   assert.match(html, /<title>Open Artist Discovery/);
-  assert.match(html, /好きなアーティストの交差点から/);
+  assert.match(html, /好きなアーティストから、次の一組へ/);
   assert.match(html, /好きなアーティスト/);
   assert.match(html, /橋渡し/);
   assert.match(html, /おすすめを探す/);
