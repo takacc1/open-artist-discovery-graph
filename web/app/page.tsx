@@ -326,7 +326,7 @@ export default function Home() {
         </div>
 
         <div className="action-row">
-          <p>選んだ内容と回答は匿名で公開されます。</p>
+          <p>選んだ内容と回答は匿名で保存されます。</p>
           <button className="discover-button" onClick={discover} disabled={loading || selected.length === 0}>
             <span>{loading ? "探索中…" : "おすすめを探す"}</span>
             <b aria-hidden="true">↗</b>
