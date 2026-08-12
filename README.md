@@ -208,6 +208,42 @@ python -m src.serving_db recommend \
 
 現在のモード別統合式はAPI接続を確認するための初期実装です。`near`は最も強い類似関係、`bridge`は複数シードへの接続率、`adventure`は信頼度を保ちながら近すぎない候補を加点します。モード別品質はWeb公開前に別途人手評価します。
 
+## 推薦HTTP API
+
+`src.api` は、画面と推薦DBをつなぐFastAPI製のHTTP窓口です。起動後は画面側がアーティスト名やMBIDを送り、JSONで検索結果・推薦理由・スコア・信頼度を受け取れます。リクエスト時にMusicBrainzやListenBrainzは呼ばず、有効化済みのローカルDBだけを読みます。
+
+```bash
+source .venv/bin/activate
+uvicorn src.api:app --reload --host 127.0.0.1 --port 8000
+```
+
+起動後、`http://127.0.0.1:8000/docs` を開くと、ブラウザ上で全APIを試せます。
+
+| メソッド | パス | 用途 |
+|---|---|---|
+| GET | `/health` | APIと推薦DBが利用可能か確認 |
+| GET | `/artists/search?q=aespa` | 名前でアーティストを検索 |
+| GET | `/artists/{mbid}` | アーティスト基本情報を取得 |
+| GET | `/artists/{mbid}/neighbors` | 1組の近いアーティストを取得 |
+| POST | `/recommendations` | 1〜5組を統合して推薦 |
+| GET | `/data-version` | 有効モデル・期間・辺数を取得 |
+
+複数シード推薦の入力例です。
+
+```json
+{
+  "seed_artist_mbids": [
+    "b51c672b-85e0-48fe-8648-470a2422229f",
+    "b2f2216a-d7a9-4ce0-8b8f-f494d9a8c196",
+    "8da127cc-c432-418f-b356-ef36210d82ac"
+  ],
+  "mode": "bridge",
+  "limit": 10
+}
+```
+
+この例はaespa・IVE・TWICEの3組に共通してつながる候補を返します。実データの動作確認では、ITZY、LE SSERAFIM、NMIXX、Red Velvet、NewJeansが上位5組でした。MBID形式、入力1〜5組、取得件数1〜50をAPI側で検証し、存在しないMBIDは `missing_seed_mbids` で返します。DBの場所は `ARTIST_DISCOVERY_DB`、画面の許可元は `ARTIST_DISCOVERY_CORS_ORIGINS` 環境変数で変更できます。
+
 K-POPヨジャドル10組の候補を人が評価するシートは次で作成します。
 
 ```bash

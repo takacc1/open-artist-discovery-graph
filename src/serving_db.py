@@ -6,9 +6,10 @@ import hashlib
 import json
 import sqlite3
 from collections import defaultdict
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Iterator
 
 
 CONFIDENCE_WEIGHT = {"high": 1.0, "medium": 0.8, "low": 0.5}
@@ -108,12 +109,20 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def connect(database: Path) -> sqlite3.Connection:
+@contextmanager
+def connect(database: Path) -> Iterator[sqlite3.Connection]:
     database.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(database)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
-    return connection
+    try:
+        yield connection
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
 
 
 def initialize_database(database: Path) -> None:
@@ -442,6 +451,70 @@ def search_artists(database: Path, query: str, limit: int = 10) -> list[dict[str
             (pattern, query.strip(), limit),
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def get_artist(database: Path, artist_mbid: str) -> dict[str, Any] | None:
+    with connect(database) as connection:
+        selected_model = active_model(connection)
+        row = connection.execute(
+            """
+            SELECT
+                artist.mbid,
+                artist.name,
+                artist.sort_name,
+                artist.artist_type,
+                artist.area_code,
+                artist.begin_year,
+                artist.end_year,
+                artist.data_version,
+                artist.updated_at,
+                COUNT(edge.target_artist_id) AS neighbor_count
+            FROM artists AS artist
+            LEFT JOIN artist_edges AS edge
+              ON edge.source_artist_id = artist.artist_id
+             AND edge.model_version = ?
+            WHERE artist.mbid = ?
+            GROUP BY artist.artist_id
+            """,
+            (selected_model, artist_mbid.strip().lower()),
+        ).fetchone()
+    if row is None:
+        return None
+    result = dict(row)
+    result["active_model"] = selected_model
+    return result
+
+
+def data_version(database: Path) -> dict[str, Any]:
+    with connect(database) as connection:
+        selected_model = active_model(connection)
+        model = connection.execute(
+            """
+            SELECT model_version, window_days, generated_at
+            FROM model_versions
+            WHERE model_version = ?
+            """,
+            (selected_model,),
+        ).fetchone()
+        assert model is not None
+        return {
+            **dict(model),
+            "artist_count": int(
+                connection.execute("SELECT COUNT(*) FROM artists").fetchone()[0]
+            ),
+            "source_artist_count": int(
+                connection.execute(
+                    "SELECT COUNT(DISTINCT source_artist_id) FROM artist_edges WHERE model_version = ?",
+                    (selected_model,),
+                ).fetchone()[0]
+            ),
+            "edge_count": int(
+                connection.execute(
+                    "SELECT COUNT(*) FROM artist_edges WHERE model_version = ?",
+                    (selected_model,),
+                ).fetchone()[0]
+            ),
+        }
 
 
 def get_neighbors(

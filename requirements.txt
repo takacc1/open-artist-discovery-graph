@@ -4,3 +4,4 @@ pandas>=2.2,<3
 pyarrow>=25,<26
 scipy>=1.16,<2
 implicit>=0.7.2,<0.8
+fastapi[standard-no-fastapi-cloud-cli]>=0.116,<1
