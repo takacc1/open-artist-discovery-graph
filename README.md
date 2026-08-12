@@ -1,6 +1,6 @@
-# Open Artist Discovery Graph — Phase 0
+# Open Artist Discovery Graph
 
-画面開発の前に、50組の基礎検証、15組のクロスジャンル検証、26組の若者向け人気アーティスト検証で、データ被覆率・同名誤結合・推薦品質を確認するための構成です。
+50組の基礎検証、15組のクロスジャンル検証、26組の若者向け人気アーティスト検証から、推薦DB・HTTP API・Web MVPまでを一つにしたプロジェクトです。
 
 ## 現在の成果物
 
@@ -33,6 +33,7 @@
 - `data/*human_ratings.csv`: 人手評価のローカル入力。個人の音楽嗜好と自由記述を含むためGitHubには公開しない
 - `docs/phase0_similarity_findings.md`: 実データでの初回結果と次の判断
 - `docs/identity_review.md`: 50組のMBID監査と同名候補の判断記録
+- `web/`: アーティスト選択、3モード、推薦理由・適合度・信頼度を表示するWeb MVP
 
 ## 実行方法
 
