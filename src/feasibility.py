@@ -27,6 +27,7 @@ WIKIDATA_SPARQL_URL = "https://query.wikidata.org/sparql"
 
 DEFAULT_INPUT = Path("data/validation_artists.csv")
 DEFAULT_REPORT_DIR = Path("reports")
+BASELINE_ARTIST_COUNT = 50
 
 
 def normalize_name(value: str) -> str:
@@ -184,6 +185,11 @@ class MusicBrainzResolver:
         digest = hashlib.sha256(artist_name.encode("utf-8")).hexdigest()
         return self.cache_dir / f"{digest}.json"
 
+    def _lookup_cache_path(self, mbid: str) -> Path | None:
+        if self.cache_dir is None:
+            return None
+        return self.cache_dir / f"mbid-{mbid.lower()}.json"
+
     def search(self, artist_name: str, limit: int = 5) -> list[dict[str, Any]]:
         cache_path = self._cache_path(artist_name)
         if cache_path is not None and cache_path.exists():
@@ -198,6 +204,22 @@ class MusicBrainzResolver:
             cache_path.parent.mkdir(parents=True, exist_ok=True)
             cache_path.write_text(json.dumps(artists, ensure_ascii=False), encoding="utf-8")
         return artists
+
+    def lookup(self, mbid: str) -> dict[str, Any]:
+        cache_path = self._lookup_cache_path(mbid)
+        if cache_path is not None and cache_path.exists():
+            return json.loads(cache_path.read_text(encoding="utf-8"))
+        response = self.http.get(
+            f"{MUSICBRAINZ_SEARCH_URL}{mbid}",
+            params={"fmt": "json", "inc": "aliases"},
+        )
+        response.raise_for_status()
+        artist = response.json()
+        artist.setdefault("score", 100)
+        if cache_path is not None:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_text(json.dumps(artist, ensure_ascii=False), encoding="utf-8")
+        return artist
 
     def resolve(self, row: dict[str, str]) -> dict[str, Any]:
         candidates = self.search(row["artist_name"])
@@ -215,8 +237,29 @@ class MusicBrainzResolver:
                 "resolution_note": "MusicBrainz returned no candidates",
             }
 
-        best_candidate, best_score = ranked[0]
-        runner_up_score = ranked[1][1].total if len(ranked) > 1 else 0.0
+        manual_mbid = row.get("manual_mbid", "").strip().lower()
+        if manual_mbid:
+            pinned = next(
+                (pair for pair in ranked if str(pair[0].get("id", "")).lower() == manual_mbid),
+                None,
+            )
+            if pinned is None:
+                manual_candidate = self.lookup(manual_mbid)
+                pinned = (manual_candidate, score_candidate(row, manual_candidate))
+                ranked.append(pinned)
+                ranked.sort(key=lambda pair: pair[1].total, reverse=True)
+            best_candidate, best_score = pinned
+            other_scores = [score.total for candidate, score in ranked if candidate is not best_candidate]
+            runner_up_score = max(other_scores, default=0.0)
+            status = (
+                "manual_confirmed"
+                if row.get("manual_identity_status", "").strip().casefold() == "confirmed"
+                else "manual_review"
+            )
+        else:
+            best_candidate, best_score = ranked[0]
+            runner_up_score = ranked[1][1].total if len(ranked) > 1 else 0.0
+            status = ""
         score_gap = best_score.total - runner_up_score
         force_review = row.get("category") == "ambiguous_name"
         strong_match = (
@@ -226,7 +269,8 @@ class MusicBrainzResolver:
             and best_score.type_match
             and score_gap >= 8
         )
-        status = "manual_review" if force_review or not strong_match else "auto_resolved"
+        if not status:
+            status = "manual_review" if force_review or not strong_match else "auto_resolved"
         return {
             "resolution_status": status,
             "resolved_mbid": best_candidate.get("id", ""),
@@ -322,8 +366,11 @@ GROUP BY ?mbid
 def read_rows(path: Path) -> list[dict[str, str]]:
     with path.open(encoding="utf-8", newline="") as handle:
         rows = list(csv.DictReader(handle))
-    if len(rows) != 50:
-        raise ValueError(f"Expected exactly 50 validation artists, found {len(rows)} in {path}")
+    if len(rows) < BASELINE_ARTIST_COUNT:
+        raise ValueError(
+            f"Expected at least {BASELINE_ARTIST_COUNT} validation artists, "
+            f"found {len(rows)} in {path}"
+        )
     names = [normalize_name(row["artist_name"]) for row in rows]
     if len(set(names)) != len(names):
         raise ValueError("Validation artist names must be unique after Unicode normalization")
@@ -345,8 +392,12 @@ def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
 
 def compute_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
     total = len(rows)
-    resolved = sum(row.get("resolution_status") in {"auto_resolved", "manual_review"} for row in rows)
+    resolved = sum(
+        row.get("resolution_status") in {"auto_resolved", "manual_review", "manual_confirmed"}
+        for row in rows
+    )
     auto_resolved = sum(row.get("resolution_status") == "auto_resolved" for row in rows)
+    manual_resolved = sum(row.get("resolution_status") == "manual_confirmed" for row in rows)
     lb_has_data = sum(bool(row.get("listenbrainz_has_data")) for row in rows)
     wikidata_has_genre = sum(safe_int(row.get("wikidata_genre_count")) > 0 for row in rows)
     confirmed = sum(row.get("manual_identity_status", "").strip().casefold() == "confirmed" for row in rows)
@@ -356,6 +407,7 @@ def compute_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "artist_count": total,
         "musicbrainz_candidate_rate": round(resolved / total, 4),
         "musicbrainz_auto_resolution_rate": round(auto_resolved / total, 4),
+        "musicbrainz_manual_confirmation_rate": round(manual_resolved / total, 4),
         "listenbrainz_data_rate": round(lb_has_data / total, 4),
         "wikidata_genre_rate": round(wikidata_has_genre / total, 4),
         "identity_confirmed_count": confirmed,
@@ -389,6 +441,7 @@ Generated from `data/validation_artists.csv`. A candidate MBID is not treated as
 |---|---:|---:|:---:|
 | MusicBrainz candidate coverage | {summary['musicbrainz_candidate_rate']:.1%} | 90% | {'yes' if go_no_go['musicbrainz_90_percent'] else 'no'} |
 | MusicBrainz automatic resolution | {summary['musicbrainz_auto_resolution_rate']:.1%} | diagnostic only | - |
+| MusicBrainz manually confirmed | {summary['musicbrainz_manual_confirmation_rate']:.1%} | 100% | {'yes' if summary['musicbrainz_manual_confirmation_rate'] == 1 else 'no'} |
 | ListenBrainz data coverage | {summary['listenbrainz_data_rate']:.1%} | 70% | {'yes' if go_no_go['listenbrainz_70_percent'] else 'no'} |
 | Wikidata genre coverage | {summary['wikidata_genre_rate']:.1%} | diagnostic only | - |
 | Identity checks pending | {summary['identity_pending_count']} | 0 | {'yes' if summary['identity_pending_count'] == 0 else 'no'} |

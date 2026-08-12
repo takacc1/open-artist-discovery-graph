@@ -476,13 +476,17 @@ artist_facts
 artist_edges
 - source_artist_id
 - target_artist_id
+- rank
 - total_score
 - behavior_score
 - metadata_score
 - relation_score
 - confidence_score
 - common_listener_bucket
+- recommendation_source
+- window_days
 - model_version
+- generated_at
 
 edge_evidence
 - edge_id
@@ -526,6 +530,8 @@ GET  /map?seed=
 GET  /data-version
 GET  /methodology
 ```
+
+2026年8月12日時点では、検索、詳細、近傍、複数シード推薦、データ版、ヘルスチェックをFastAPIで実装済み。`feedback`、`map`、`methodology` はWeb MVPと合わせて追加する。
 
 ### 6.6 API仕様変更への耐性
 
@@ -815,39 +821,40 @@ ListenBrainzにおける日本の小規模アーティストの被覆率が低�
 
 ### Phase 0：データ実現性検証（1〜2週間）
 
-- [ ] MusicBrainz JSONサンプルの取込
-- [ ] ListenBrainzの開発用小規模データ、または限定期間サンプルの取込
-- [ ] MBID名寄せ処理
-- [ ] 50アーティストの被覆率調査
-- [ ] cosine＋shrinkage、セッション共起、implicit ALSの比較
-- [ ] 上位推薦を人手評価
-- [ ] データ源・フィールド・ライセンス台帳の作成
-- [ ] ListenBrainz生データ処理のプライバシー影響評価
-- [ ] Go / No-Go判定
+- [x] MusicBrainz JSONサンプルの取込
+- [x] ListenBrainzの開発用小規模データ、または限定期間サンプルの取込
+- [x] MBID名寄せ処理
+- [x] 50アーティストの被覆率調査
+- [x] cosine＋shrinkage、セッション共起、implicit ALSの比較
+- [x] 上位推薦を人手評価
+- [x] データ源・フィールド・ライセンス台帳の作成
+- [x] ListenBrainz生データ処理のプライバシー影響評価
+- [x] Go / No-Go判定
 
 成果物：検証Notebook、被覆率レポート、代表推薦一覧、ライセンス台帳。
 
 ### Phase 1：データ基盤MVP（2週間）
 
-- [ ] ETLを再実行可能なCLIにする
+- [x] ETLを再実行可能なCLIにする
 - [ ] MusicBrainzのリダイレクト・別名処理
-- [ ] ユーザー×アーティスト集計
-- [ ] cosine＋shrinkage類似度
-- [ ] 各アーティスト上位30辺の出力
-- [ ] データ版・チェックサム管理
-- [ ] スキーマ検査と品質検査
+- [x] ユーザー×アーティスト集計
+- [x] cosine＋shrinkage類似度
+- [x] 各アーティスト上位30〜50辺の出力
+- [x] データ版・チェックサム管理
+- [x] スキーマ検査と品質検査
 
 成果物：`artists.parquet`、`artist_edges.parquet`、`provenance.json`。
 
 ### Phase 2：推薦API（1〜2週間）
 
 - [ ] PostgreSQLスキーマ作成
-- [ ] アーティスト検索
-- [ ] 複数シード推薦
-- [ ] 近い・橋渡し・冒険モード
-- [ ] 根拠と信頼度の返却
-- [ ] APIテスト
-- [ ] レート制限と入力検証
+- [x] アーティスト検索
+- [x] 複数シード推薦
+- [x] 近い・橋渡し・冒険モード
+- [x] 根拠と信頼度の返却
+- [x] APIテスト
+- [x] MBID・件数・モードの入力検証
+- [ ] 公開環境のレート制限
 - [ ] 想定同時アクセスでの負荷試験
 
 ### Phase 3：Web MVP（2週間）
@@ -996,6 +1003,19 @@ This service is unofficial and is not endorsed by any artist or streaming provid
 7. プライバシー・ライセンスのGo / No-Go基準も満たしたらWeb開発へ進む。
 
 この順番なら、UIを完成させた後で「日本のアーティストデータが足りず、推薦できない」と分かる失敗を避けられる。
+
+### 2026年8月12日時点の進捗
+
+- 90組のMBID本人確認、MusicBrainz／ListenBrainz／Wikidata被覆率検証：完了
+- ListenBrainz 30日分、約1.30億行からcosine＋shrinkage Top 50生成：完了
+- K-POP、クロスジャンル、若者向け26組の人手評価：完了、30日版は全体PASS
+- 30人未満向けWikidata／MusicBrainz関係メタデータ補助：実装完了
+- 低データv4の74候補を人手評価：完了、評価0率5.4%でPASS
+- SQLiteグラフDB、複数シード推薦、v4有効化：完了
+- FastAPIの検索・詳細・近傍・複数シード推薦・データ版：実装完了
+- Web画面：未着手
+
+したがって現在地は、当初工程の「推薦品質評価」「DB」「推薦HTTP API」まで完了です。次はWeb MVPのアーティスト選択画面と推薦結果画面へ進みます。PostgreSQL移行、公開レート制限、負荷試験は公開環境を決めた後に行います。
 
 ---
 
