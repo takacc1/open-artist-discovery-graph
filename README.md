@@ -110,19 +110,24 @@ python -m src.recommendation_fallback \
 ```bash
 python -m src.metadata_fallback fetch \
   --input data/validation_artists.csv \
-  --output reports/metadata/artist_features.json \
+  --database reports/serving/artist_discovery.sqlite3 \
+  --behavior-summary reports/30d/similarity_summary.json \
+  --output reports/metadata/serving_catalog_features.json \
   --contact https://github.com/takacc1/open-artist-discovery-graph
 
 python -m src.metadata_fallback blend \
   --behavior-rows reports/30d/similarity_top50.csv \
   --behavior-summary reports/30d/similarity_summary.json \
-  --metadata reports/metadata/artist_features.json \
-  --output-dir reports/serving_metadata
+  --metadata reports/metadata/serving_catalog_features.json \
+  --output-dir reports/serving_metadata_expanded \
+  --exclude-artists data/known_artists_local.csv
 ```
 
-補助点はWikidataジャンル45%、検証用の自前ジャンル20%、MusicBrainzの直接関係12%、国8%、開始年8%、種別7%です。国・年代・種別だけでは推薦候補にせず、ジャンル一致または直接関係を必須にします。MusicBrainzの補助データであるgenres/tagsはライセンス方針に合わせて使いません。30人未満ではリスナー数に応じて行動点の重みを15〜80%へ変え、Top 10のメタデータのみの候補は最大5件に制限します。
+`data/known_artists_local.csv` は `artist_name,canonical_name` のローカル除外表です。個人の嗜好にあたるためGit管理せず、低データの入力だけで行動候補とメタデータ候補の両方から除外します。データが十分な入力の通常ランキングは変更しません。
 
-90組の実データでは、30人未満は若者向け8組とDYGLの計9組で、9組すべてに補助候補を生成できました。若者向け8組の手入力参考候補とのTop 10一致は4件から9件、1件以上一致する入力は3組から5組へ増えました。ただしこれは本精度ではなく診断値です。新規36候補を0・1・2で再採点してから採否を決めます。
+補助点はWikidataジャンル45%、検証用の自前ジャンル20%、MusicBrainzの直接関係12%、国8%、開始年8%、種別7%です。国・年代・種別だけでは推薦候補にせず、ジャンル一致または直接関係を必須にします。MusicBrainzの補助データであるgenres/tagsはライセンス方針に合わせて使いません。30人未満ではリスナー数に応じて行動点の重みを15〜80%へ変え、Top 10のメタデータのみの候補は最大5件に制限します。Wikidataは100 MBIDずつ分割取得してキャッシュし、MusicBrainzの個別照会は低データ入力に絞ります。
+
+現在の候補プールは公開用DB内の1,978組です。うち1,676組にWikidata項目、1,422組にジャンルがあり、30人未満の若者向け8組とDYGLの計9組すべてに補助候補を生成できました。若者向け8組では、行動Top 50に含まれた既知候補45件を除外し、メタデータ候補にも同じ除外表を適用しています。この段階は推薦精度の合格を意味しないため、新しい80候補を0・1・2で人手評価してから採否を決めます。
 
 保存される辺は「サカナクションなら常にくるり」という固定ルールではなく、特定の集計期間・モデル版で計算したTop 50のキャッシュです。モデル更新時に順位を入れ替えます。未計算アーティストがリクエストされた場合は、MusicBrainzでMBIDを解決して計算待ちへ入れ、データがあれば30日または90日でオンデマンド計算し、なければメタデータ推薦またはデータ不足を返します。
 
@@ -136,12 +141,12 @@ python -m src.metadata_fallback blend \
 python -m src.serving_db build \
   --database reports/serving/artist_discovery.sqlite3 \
   --coverage reports/artist_coverage.csv \
-  --similarity reports/serving_metadata/similarity_top50.csv \
-  --model-version cosine-shrinkage-metadata-30d-v1 \
+  --similarity reports/serving_metadata_expanded/similarity_top50.csv \
+  --model-version cosine-shrinkage-metadata-expanded-30d-v2 \
   --window-days 30
 ```
 
-メタデータ補助済み30日版は90入力アーティストすべてにTop 50を生成し、4,500辺を有効モデルとして保存します。DBは行動点、メタデータ点、関係点、信頼度に加え、`edge_evidence`へ共通リスナー数とメタデータ根拠を分離保存します。旧モデルもロールバック用に残るため、現在のローカルSQLite全体は1,978アーティスト・9,860辺、有効モデルは4,500辺、根拠4,511件です。DBファイルは生成物としてGit管理しません。
+拡張メタデータ補助済み30日版は90入力アーティストすべてにTop 50を生成し、4,500辺を有効モデルとして保存します。DBは行動点、メタデータ点、関係点、信頼度に加え、`edge_evidence`へ共通リスナー数とメタデータ根拠を分離保存します。旧モデルもロールバック用に残るため、現在のローカルSQLite全体は1,978アーティスト・14,360辺・根拠9,100件、有効モデルは4,500辺・根拠4,589件です。DBファイルは生成物としてGit管理しません。
 
 若者向け26組の30日版Top 10は、前回と同じ113候補の評価を引き継ぎ、新候補147件を追加採点しました。集計は次で再実行できます。
 

@@ -2,20 +2,40 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import math
 import os
+import sqlite3
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-from src.feasibility import PoliteSession, WIKIDATA_SPARQL_URL, write_csv
+from src.feasibility import PoliteSession, WIKIDATA_SPARQL_URL, normalize_name, write_csv
 
 
 MUSICBRAINZ_ARTIST_URL = "https://musicbrainz.org/ws/2/artist/{mbid}"
 DEFAULT_MIN_LISTENERS = 30
 DEFAULT_MAX_METADATA_ONLY_TOP10 = 5
+DEFAULT_WIKIDATA_BATCH_SIZE = 100
+
+# The validation genre is project-owned data. Mapping it to broad Wikidata genre
+# IDs lets a sparse seed match external candidates without copying MusicBrainz's
+# supplementary genre/tag data into the production model.
+CURATED_WIKIDATA_GENRES = {
+    "pop": {"Q37073", "Q131578", "Q484641"},
+    "pop_rock": {"Q484641", "Q11399", "Q37073"},
+    "rock": {"Q11399"},
+    "rock_alternative": {"Q11366", "Q11399"},
+    "kpop": {"Q213665"},
+    "rnb": {"Q45981", "Q850412"},
+    "hiphop": {"Q11401"},
+    "electronic": {"Q9778"},
+    "folk_pop": {"Q186472", "Q37073"},
+    "punk_rock": {"Q3071"},
+    "jazz": {"Q8341"},
+}
 
 
 def _utc_now() -> str:
@@ -95,14 +115,9 @@ def _musicbrainz_features(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def wikidata_features(
-    mbids: Iterable[str], user_agent: str
-) -> dict[str, dict[str, Any]]:
-    unique_mbids = sorted({mbid.strip().lower() for mbid in mbids if mbid.strip()})
-    if not unique_mbids:
-        return {}
-    values = " ".join(json.dumps(mbid) for mbid in unique_mbids)
-    query = f"""
+def _wikidata_query(mbids: list[str]) -> str:
+    values = " ".join(json.dumps(mbid) for mbid in mbids)
+    return f"""
 SELECT ?mbid ?item ?genre ?country ?start WHERE {{
   VALUES ?mbid {{ {values} }}
   ?item wdt:P434 ?mbid.
@@ -111,15 +126,45 @@ SELECT ?mbid ?item ?genre ?country ?start WHERE {{
   OPTIONAL {{ ?item (wdt:P571|wdt:P2031) ?start. }}
 }}
 """.strip()
-    http = PoliteSession(user_agent, minimum_interval=0.2)
-    response = http.get(
-        WIKIDATA_SPARQL_URL,
-        params={"query": query, "format": "json"},
-        headers={"Accept": "application/sparql-results+json"},
-    )
-    response.raise_for_status()
+
+
+def wikidata_features(
+    mbids: Iterable[str],
+    user_agent: str,
+    *,
+    batch_size: int = DEFAULT_WIKIDATA_BATCH_SIZE,
+    cache_dir: Path | None = None,
+) -> dict[str, dict[str, Any]]:
+    unique_mbids = sorted({mbid.strip().lower() for mbid in mbids if mbid.strip()})
+    if not unique_mbids:
+        return {}
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+    http = PoliteSession(user_agent, minimum_interval=0.5)
+    bindings: list[dict[str, Any]] = []
+    for start in range(0, len(unique_mbids), batch_size):
+        batch = unique_mbids[start : start + batch_size]
+        digest = hashlib.sha256("\n".join(batch).encode("utf-8")).hexdigest()
+        cache_path = cache_dir / f"{digest}.json" if cache_dir is not None else None
+        if cache_path is not None and cache_path.exists():
+            payload = json.loads(cache_path.read_text(encoding="utf-8"))
+        else:
+            response = http.get(
+                WIKIDATA_SPARQL_URL,
+                params={"query": _wikidata_query(batch), "format": "json"},
+                headers={"Accept": "application/sparql-results+json"},
+            )
+            response.raise_for_status()
+            payload = response.json()
+            if cache_path is not None:
+                cache_path.parent.mkdir(parents=True, exist_ok=True)
+                cache_path.write_text(
+                    json.dumps(payload, ensure_ascii=False) + "\n", encoding="utf-8"
+                )
+        bindings.extend(payload.get("results", {}).get("bindings", []))
+
     aggregated: dict[str, dict[str, Any]] = {}
-    for binding in response.json().get("results", {}).get("bindings", []):
+    for binding in bindings:
         mbid = binding["mbid"]["value"].lower()
         current = aggregated.setdefault(
             mbid,
@@ -148,43 +193,118 @@ SELECT ?mbid ?item ?genre ?country ?start WHERE {{
     return result
 
 
+def catalog_from_database(database: Path) -> list[dict[str, Any]]:
+    connection = sqlite3.connect(database)
+    connection.row_factory = sqlite3.Row
+    try:
+        return [
+            dict(row)
+            for row in connection.execute(
+                """
+                SELECT mbid, name, artist_type, area_code, begin_year
+                FROM artists
+                ORDER BY name COLLATE NOCASE, mbid
+                """
+            )
+        ]
+    finally:
+        connection.close()
+
+
+def merge_validation_context(
+    catalog_rows: list[dict[str, Any]], validation_rows: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    validation_by_mbid = {
+        _catalog_mbid(row): row for row in validation_rows if _catalog_mbid(row)
+    }
+    merged = []
+    for row in catalog_rows:
+        context = validation_by_mbid.get(_catalog_mbid(row), {})
+        merged.append(
+            {
+                **row,
+                "primary_genre": context.get("primary_genre") or row.get("primary_genre") or "",
+                "expected_country": context.get("expected_country") or row.get("area_code") or "",
+                "expected_type": context.get("expected_type") or row.get("artist_type") or "",
+            }
+        )
+    return merged
+
+
+def _catalog_mbid(row: dict[str, Any]) -> str:
+    return str(
+        row.get("manual_mbid") or row.get("resolved_mbid") or row.get("mbid") or ""
+    ).strip().lower()
+
+
+def _catalog_name(row: dict[str, Any]) -> str:
+    return str(
+        row.get("artist_name") or row.get("resolved_name") or row.get("name") or ""
+    ).strip()
+
+
 def fetch_metadata(
     validation_csv: Path,
     output_path: Path,
     cache_dir: Path,
     user_agent: str,
+    *,
+    catalog_rows: list[dict[str, Any]] | None = None,
+    musicbrainz_mbids: set[str] | None = None,
+    wikidata_batch_size: int = DEFAULT_WIKIDATA_BATCH_SIZE,
 ) -> dict[str, Any]:
-    rows = _read_csv(validation_csv)
+    rows: list[dict[str, Any]] = catalog_rows or _read_csv(validation_csv)
     client = MusicBrainzMetadataClient(user_agent, cache_dir / "musicbrainz")
     artists: list[ArtistMetadata] = []
     errors: list[dict[str, str]] = []
     for row in rows:
-        mbid = (row.get("manual_mbid") or row.get("resolved_mbid") or "").strip().lower()
-        if not mbid:
+        mbid = _catalog_mbid(row)
+        name = _catalog_name(row)
+        if not mbid or not name:
             continue
-        try:
-            mb = _musicbrainz_features(client.lookup(mbid))
-        except Exception as exc:  # One unavailable artist must not discard the whole cache.
-            errors.append({"mbid": mbid, "artist_name": row["artist_name"], "source": "MusicBrainz", "error": str(exc)})
-            mb = {}
+        mb: dict[str, Any] = {}
+        if musicbrainz_mbids is None or mbid in musicbrainz_mbids:
+            try:
+                mb = _musicbrainz_features(client.lookup(mbid))
+            except Exception as exc:  # One unavailable artist must not discard the whole cache.
+                errors.append(
+                    {
+                        "mbid": mbid,
+                        "artist_name": name,
+                        "source": "MusicBrainz",
+                        "error": str(exc),
+                    }
+                )
         countries = set(mb.get("countries", []))
-        expected_country = (row.get("expected_country") or "").strip().upper()
+        expected_country = str(
+            row.get("expected_country") or row.get("area_code") or ""
+        ).strip().upper()
         if expected_country:
             countries.add(expected_country)
         artists.append(
             ArtistMetadata(
                 mbid=mbid,
-                name=row["artist_name"],
-                artist_type=mb.get("artist_type") or (row.get("expected_type") or ""),
+                name=name,
+                artist_type=str(
+                    mb.get("artist_type")
+                    or row.get("expected_type")
+                    or row.get("artist_type")
+                    or ""
+                ),
                 countries=sorted(countries),
-                begin_year=mb.get("begin_year"),
+                begin_year=mb.get("begin_year") or _year(row.get("begin_year")),
                 related_artist_mbids=mb.get("related_artist_mbids", []),
                 curated_primary_genre=(row.get("primary_genre") or "").strip().casefold(),
             )
         )
 
     try:
-        wd = wikidata_features((artist.mbid for artist in artists), user_agent)
+        wd = wikidata_features(
+            (artist.mbid for artist in artists),
+            user_agent,
+            batch_size=wikidata_batch_size,
+            cache_dir=cache_dir / "wikidata",
+        )
     except Exception as exc:
         errors.append({"mbid": "*", "artist_name": "*", "source": "Wikidata", "error": str(exc)})
         wd = {}
@@ -202,6 +322,11 @@ def fetch_metadata(
         "generated_at": _utc_now(),
         "sources": ["MusicBrainz", "Wikidata", "validation_curated_primary_genre"],
         "artist_count": len(artists),
+        "musicbrainz_lookup_count": (
+            len(artists)
+            if musicbrainz_mbids is None
+            else sum(artist.mbid in musicbrainz_mbids for artist in artists)
+        ),
         "errors": errors,
         "artists": [asdict(artist) for artist in artists],
     }
@@ -218,7 +343,11 @@ def _jaccard(left: Iterable[str], right: Iterable[str]) -> float:
 
 
 def metadata_similarity(seed: ArtistMetadata, candidate: ArtistMetadata) -> dict[str, Any]:
-    wd_genre = _jaccard(seed.wikidata_genres, candidate.wikidata_genres)
+    seed_genres = set(seed.wikidata_genres) | CURATED_WIKIDATA_GENRES.get(
+        seed.curated_primary_genre, set()
+    )
+    candidate_genres = set(candidate.wikidata_genres)
+    wd_genre = _jaccard(seed_genres, candidate_genres)
     curated_match = bool(
         seed.curated_primary_genre
         and seed.curated_primary_genre == candidate.curated_primary_genre
@@ -249,7 +378,7 @@ def metadata_similarity(seed: ArtistMetadata, candidate: ArtistMetadata) -> dict
         score = 0.0
     evidence = {
         "shared_wikidata_genres": sorted(
-            set(seed.wikidata_genres) & set(candidate.wikidata_genres)
+            seed_genres & candidate_genres
         ),
         "curated_genre_match": curated_match,
         "direct_relation": direct_relation,
@@ -291,6 +420,16 @@ def _metadata_reason(evidence: dict[str, Any]) -> str:
     return " / ".join(parts) or "メタデータ補助"
 
 
+def excluded_names_from_csv(path: Path) -> set[str]:
+    names: set[str] = set()
+    for row in _read_csv(path):
+        for key in ("artist_name", "canonical_name", "name"):
+            value = (row.get(key) or "").strip()
+            if value:
+                names.add(normalize_name(value))
+    return names
+
+
 def blend_low_data_results(
     behavior_rows: list[dict[str, Any]],
     summary_payload: dict[str, Any],
@@ -299,6 +438,7 @@ def blend_low_data_results(
     min_listeners: int = DEFAULT_MIN_LISTENERS,
     limit: int = 50,
     max_metadata_only_top10: int = DEFAULT_MAX_METADATA_ONLY_TOP10,
+    excluded_candidate_names: set[str] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     if min_listeners <= 0 or limit <= 0 or max_metadata_only_top10 < 0:
         raise ValueError("thresholds and limits are invalid")
@@ -307,6 +447,7 @@ def blend_low_data_results(
         for row in metadata_payload.get("artists", [])
     }
     counts = _listener_counts(summary_payload)
+    excluded = excluded_candidate_names or set()
     by_seed: dict[str, list[dict[str, Any]]] = {}
     for row in behavior_rows:
         by_seed.setdefault(str(row["seed_artist_mbid"]).lower(), []).append(dict(row))
@@ -334,7 +475,11 @@ def blend_low_data_results(
 
         behavior_weight = min(0.8, max(0.15, 0.8 * listener_count / min_listeners))
         candidates: dict[str, dict[str, Any]] = {}
+        excluded_count = 0
         for row in rows:
+            if normalize_name(str(row["candidate_artist_name"])) in excluded:
+                excluded_count += 1
+                continue
             candidate_mbid = str(row["candidate_artist_mbid"]).lower()
             rank_score = 1.0 / math.log2(int(row["rank"]) + 1)
             candidates[candidate_mbid] = {
@@ -349,6 +494,8 @@ def blend_low_data_results(
         metadata_candidates = 0
         for candidate_mbid, candidate in features.items():
             if candidate_mbid == seed_mbid:
+                continue
+            if normalize_name(candidate.name) in excluded:
                 continue
             evidence = metadata_similarity(seed, candidate)
             if evidence["metadata_score"] <= 0:
@@ -439,6 +586,7 @@ def blend_low_data_results(
                 "strategy": "behavior_metadata_blend",
                 "behavior_weight": round(behavior_weight, 6),
                 "metadata_candidate_count": metadata_candidates,
+                "excluded_behavior_candidate_count": excluded_count,
                 "top10_changed_count": len(set(old_top10) ^ set(new_top10)) // 2,
             }
         )
@@ -450,6 +598,7 @@ def blend_low_data_results(
         "policy": {
             "min_listener_count": min_listeners,
             "max_metadata_only_candidates_in_top10": max_metadata_only_top10,
+            "known_candidates_excluded": bool(excluded),
             "behavior_weight": "clamp(0.8 * listeners / threshold, 0.15, 0.8)",
             "metadata_weights": {
                 "wikidata_genre_jaccard": 0.45,
@@ -478,6 +627,7 @@ def blend_files(
     min_listeners: int,
     limit: int,
     max_metadata_only_top10: int = DEFAULT_MAX_METADATA_ONLY_TOP10,
+    excluded_artists_path: Path | None = None,
 ) -> dict[str, Any]:
     rows, report = blend_low_data_results(
         _read_csv(behavior_rows_path),
@@ -486,6 +636,11 @@ def blend_files(
         min_listeners=min_listeners,
         limit=limit,
         max_metadata_only_top10=max_metadata_only_top10,
+        excluded_candidate_names=(
+            excluded_names_from_csv(excluded_artists_path)
+            if excluded_artists_path is not None
+            else None
+        ),
     )
     output_dir.mkdir(parents=True, exist_ok=True)
     write_csv(output_dir / "similarity_top50.csv", rows)
@@ -500,9 +655,23 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
     fetch = sub.add_parser("fetch", help="Fetch MusicBrainz and Wikidata metadata")
     fetch.add_argument("--input", type=Path, default=Path("data/validation_artists.csv"))
+    fetch.add_argument(
+        "--database",
+        type=Path,
+        help="Use every artist in the serving SQLite DB as the candidate catalog",
+    )
+    fetch.add_argument(
+        "--behavior-summary",
+        type=Path,
+        help="When using --database, fetch MusicBrainz relations only for sparse seeds",
+    )
     fetch.add_argument("--output", type=Path, default=Path("reports/metadata/artist_features.json"))
     fetch.add_argument("--cache-dir", type=Path, default=Path("reports/cache/metadata"))
     fetch.add_argument("--contact", default=os.environ.get("PROJECT_CONTACT", ""))
+    fetch.add_argument("--min-listeners", type=int, default=DEFAULT_MIN_LISTENERS)
+    fetch.add_argument(
+        "--wikidata-batch-size", type=int, default=DEFAULT_WIKIDATA_BATCH_SIZE
+    )
     blend = sub.add_parser("blend", help="Blend metadata into artists below the listener threshold")
     blend.add_argument("--behavior-rows", type=Path, required=True)
     blend.add_argument("--behavior-summary", type=Path, required=True)
@@ -513,6 +682,11 @@ def build_parser() -> argparse.ArgumentParser:
     blend.add_argument(
         "--max-metadata-only-top10", type=int, default=DEFAULT_MAX_METADATA_ONLY_TOP10
     )
+    blend.add_argument(
+        "--exclude-artists",
+        type=Path,
+        help="Local CSV of known artists to exclude from sparse evaluation candidates",
+    )
     return parser
 
 
@@ -521,13 +695,46 @@ def main() -> None:
     if args.command == "fetch":
         if not args.contact:
             raise SystemExit("Set PROJECT_CONTACT or pass --contact")
+        catalog_rows = None
+        if args.database:
+            catalog_rows = merge_validation_context(
+                catalog_from_database(args.database), _read_csv(args.input)
+            )
+        musicbrainz_mbids = None
+        if args.database:
+            if args.behavior_summary:
+                listener_counts = _listener_counts(
+                    json.loads(args.behavior_summary.read_text(encoding="utf-8"))
+                )
+                musicbrainz_mbids = {
+                    mbid
+                    for mbid, count in listener_counts.items()
+                    if count < args.min_listeners
+                }
+            else:
+                # Avoid thousands of rate-limited lookups by default. Wikidata
+                # still covers the full DB candidate catalog.
+                musicbrainz_mbids = set()
         payload = fetch_metadata(
             args.input,
             args.output,
             args.cache_dir,
             f"open-artist-discovery-metadata/0.1 ({args.contact})",
+            catalog_rows=catalog_rows,
+            musicbrainz_mbids=musicbrainz_mbids,
+            wikidata_batch_size=args.wikidata_batch_size,
         )
-        print(json.dumps({"artist_count": payload["artist_count"], "errors": payload["errors"]}, ensure_ascii=False, indent=2))
+        print(
+            json.dumps(
+                {
+                    "artist_count": payload["artist_count"],
+                    "musicbrainz_lookup_count": payload["musicbrainz_lookup_count"],
+                    "errors": payload["errors"],
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
     else:
         report = blend_files(
             args.behavior_rows,
@@ -537,6 +744,7 @@ def main() -> None:
             args.min_listeners,
             args.limit,
             args.max_metadata_only_top10,
+            args.exclude_artists,
         )
         print(json.dumps(report, ensure_ascii=False, indent=2))
 

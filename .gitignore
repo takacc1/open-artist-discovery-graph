@@ -31,8 +31,10 @@ reports/youth_popular/
 reports/30d/
 reports/metadata/
 reports/serving_metadata/
+reports/serving_metadata_expanded/
 *.sqlite3
 outputs/
 
 # Local human judgments can reveal personal music preferences and free-text notes.
 data/*human_ratings.csv
+data/known_artists*.csv

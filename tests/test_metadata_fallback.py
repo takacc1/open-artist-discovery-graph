@@ -100,6 +100,68 @@ class MetadataFallbackTests(unittest.TestCase):
         metadata_only = [row for row in blended if row["recommendation_source"] == "metadata_fallback"]
         self.assertEqual(5, len(metadata_only))
 
+    def test_excludes_known_candidates_from_sparse_results(self):
+        rows = [
+            {
+                "seed_artist_name": "Sparse",
+                "seed_artist_mbid": "s",
+                "candidate_artist_name": "Known Artist",
+                "candidate_artist_mbid": "known",
+                "similarity_score": "0.4",
+                "rank": "1",
+                "confidence": "low",
+            },
+            {
+                "seed_artist_name": "Sparse",
+                "seed_artist_mbid": "s",
+                "candidate_artist_name": "Unknown Artist",
+                "candidate_artist_mbid": "unknown",
+                "similarity_score": "0.3",
+                "rank": "2",
+                "confidence": "low",
+            },
+        ]
+        summary = {
+            "similarity": {"artists": [{"mbid": "s", "listener_count_in_window": 2}]}
+        }
+        metadata = {
+            "artists": [
+                feature("s", "Sparse", genre="rock").__dict__,
+                feature("known", "Known Artist", genre="rock").__dict__,
+                feature("unknown", "Unknown Artist", genre="rock").__dict__,
+            ]
+        }
+        blended, report = blend_low_data_results(
+            rows,
+            summary,
+            metadata,
+            limit=10,
+            excluded_candidate_names={"knownartist"},
+        )
+        self.assertNotIn("known", {row["candidate_artist_mbid"] for row in blended})
+        self.assertEqual(1, report["artists"][0]["excluded_behavior_candidate_count"])
+
+    def test_curated_seed_genre_matches_external_wikidata_genre(self):
+        seed = feature("s", "Sparse", genre="rock")
+        candidate = feature("c", "Candidate")
+        candidate.wikidata_genres = ["Q11399"]
+        score = metadata_similarity(seed, candidate)
+        self.assertGreater(score["metadata_score"], 0)
+        self.assertEqual(["Q11399"], score["shared_wikidata_genres"])
+
+    def test_rnb_mapping_does_not_treat_jpop_as_rnb(self):
+        seed = feature("s", "Sparse", genre="rnb")
+        jpop_candidate = feature("j", "J-pop Candidate")
+        jpop_candidate.wikidata_genres = ["Q131578"]
+        contemporary_rnb_candidate = feature("r", "R&B Candidate")
+        contemporary_rnb_candidate.wikidata_genres = ["Q850412"]
+
+        self.assertEqual(0, metadata_similarity(seed, jpop_candidate)["metadata_score"])
+        self.assertGreater(
+            metadata_similarity(seed, contemporary_rnb_candidate)["metadata_score"],
+            0,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
