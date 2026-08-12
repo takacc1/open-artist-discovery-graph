@@ -1,4 +1,5 @@
 import unittest
+from os import environ
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -67,6 +68,34 @@ class HostedApiTests(unittest.TestCase):
 
         invalid = self.client.post(f"/searches/{SEARCH}/feedback", json={"rating": 3})
         self.assertEqual(422, invalid.status_code)
+
+    @patch.dict(environ, {"ADMIN_DASHBOARD_TOKEN": "secret-admin-token"})
+    @patch("api_service.index.get_admin_feedback")
+    def test_admin_feedback_requires_password(self, mocked_admin_feedback):
+        mocked_admin_feedback.return_value = {
+            "summary": {
+                "total_searches": 2,
+                "answered_count": 1,
+                "unanswered_count": 1,
+                "good_count": 1,
+                "okay_count": 0,
+                "bad_count": 0,
+                "good_rate": 100.0,
+                "mode_counts": {"near": 0, "bridge": 2, "adventure": 0},
+            },
+            "entries": [],
+        }
+
+        denied = self.client.get("/admin/feedback")
+        self.assertEqual(401, denied.status_code)
+
+        allowed = self.client.get(
+            "/admin/feedback",
+            headers={"Authorization": "Bearer secret-admin-token"},
+        )
+        self.assertEqual(200, allowed.status_code)
+        self.assertEqual(100.0, allowed.json()["summary"]["good_rate"])
+        mocked_admin_feedback.assert_called_once_with(100)
 
 
 if __name__ == "__main__":

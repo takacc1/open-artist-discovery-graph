@@ -48,3 +48,13 @@ test("keeps API behavior and starter cleanup explicit", async () => {
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   assert.doesNotMatch(page + layout, /_sites-preview|codex-preview/);
 });
+
+test("keeps the feedback dashboard password protected", async () => {
+  const admin = await readFile(new URL("../app/admin/page.tsx", import.meta.url), "utf8");
+
+  assert.match(admin, /アンケート結果/);
+  assert.match(admin, /type="password"/);
+  assert.match(admin, /Authorization: `Bearer \$\{token\}`/);
+  assert.match(admin, /よかった率/);
+  assert.match(admin, /検索ごとの回答/);
+});

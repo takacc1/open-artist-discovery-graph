@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import os
+import hmac
 from collections import defaultdict
 from contextlib import contextmanager
 from typing import Annotated, Any, Iterator, Literal
 from uuid import UUID
 
 import psycopg
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
@@ -85,6 +86,33 @@ class RecommendationResponse(BaseModel):
 
 class FeedbackRequest(BaseModel):
     rating: Literal[0, 1, 2]
+
+
+class AdminFeedbackSummary(BaseModel):
+    total_searches: int
+    answered_count: int
+    unanswered_count: int
+    good_count: int
+    okay_count: int
+    bad_count: int
+    good_rate: float
+    mode_counts: dict[str, int]
+
+
+class AdminFeedbackEntry(BaseModel):
+    search_id: UUID
+    mode: Literal["near", "bridge", "adventure"]
+    model_version: str
+    seed_artists: list[dict[str, Any]]
+    recommendations: list[dict[str, Any]]
+    feedback_rating: Literal[0, 1, 2] | None = None
+    created_at: str
+    feedback_created_at: str | None = None
+
+
+class AdminFeedbackResponse(BaseModel):
+    summary: AdminFeedbackSummary
+    entries: list[AdminFeedbackEntry]
 
 
 class DataVersionResponse(BaseModel):
@@ -443,6 +471,67 @@ def record_feedback(search_id: str, rating: int) -> bool:
     return row is not None
 
 
+def get_admin_feedback(limit: int) -> dict[str, Any]:
+    with connect() as connection:
+        summary_row = connection.execute(
+            """
+            SELECT
+                COUNT(*)::int AS total_searches,
+                COUNT(feedback_rating)::int AS answered_count,
+                COUNT(*) FILTER (WHERE feedback_rating IS NULL)::int AS unanswered_count,
+                COUNT(*) FILTER (WHERE feedback_rating = 2)::int AS good_count,
+                COUNT(*) FILTER (WHERE feedback_rating = 1)::int AS okay_count,
+                COUNT(*) FILTER (WHERE feedback_rating = 0)::int AS bad_count,
+                COALESCE(
+                    ROUND(
+                        100.0 * COUNT(*) FILTER (WHERE feedback_rating = 2)
+                        / NULLIF(COUNT(feedback_rating), 0),
+                        1
+                    ),
+                    0
+                )::float AS good_rate,
+                jsonb_build_object(
+                    'near', COUNT(*) FILTER (WHERE mode = 'near'),
+                    'bridge', COUNT(*) FILTER (WHERE mode = 'bridge'),
+                    'adventure', COUNT(*) FILTER (WHERE mode = 'adventure')
+                ) AS mode_counts
+            FROM recommendation_searches
+            """
+        ).fetchone()
+        entry_rows = connection.execute(
+            """
+            SELECT
+                search_id::text AS search_id,
+                mode,
+                model_version,
+                seed_artists,
+                recommendations,
+                feedback_rating,
+                created_at::text AS created_at,
+                feedback_created_at::text AS feedback_created_at
+            FROM recommendation_searches
+            ORDER BY created_at DESC
+            LIMIT %s
+            """,
+            (limit,),
+        ).fetchall()
+    assert summary_row is not None
+    return {
+        "summary": dict(summary_row),
+        "entries": [dict(row) for row in entry_rows],
+    }
+
+
+def require_admin(authorization: str | None) -> None:
+    expected = os.environ.get("ADMIN_DASHBOARD_TOKEN", "").strip()
+    if not expected:
+        raise HTTPException(status_code=503, detail="管理画面が設定されていません。")
+    prefix = "Bearer "
+    supplied = authorization[len(prefix):].strip() if authorization and authorization.startswith(prefix) else ""
+    if not supplied or not hmac.compare_digest(supplied, expected):
+        raise HTTPException(status_code=401, detail="管理パスワードが違います。")
+
+
 app = FastAPI(
     title="Open Artist Discovery Graph API",
     version="1.0.0",
@@ -453,7 +542,7 @@ app.add_middleware(
     allow_origins=configured_origins(),
     allow_credentials=False,
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 
@@ -527,6 +616,19 @@ def feedback(search_id: UUID, payload: FeedbackRequest) -> dict[str, bool]:
     if not saved:
         raise HTTPException(status_code=404, detail="検索履歴が見つかりません。")
     return {"saved": True}
+
+
+@app.get(
+    "/admin/feedback",
+    response_model=AdminFeedbackResponse,
+    tags=["admin"],
+)
+def admin_feedback(
+    limit: Annotated[int, Query(ge=1, le=200)] = 100,
+    authorization: Annotated[str | None, Header()] = None,
+) -> dict[str, Any]:
+    require_admin(authorization)
+    return call_database(get_admin_feedback, limit)
 
 
 @app.get("/data-version", response_model=DataVersionResponse, tags=["system"])
