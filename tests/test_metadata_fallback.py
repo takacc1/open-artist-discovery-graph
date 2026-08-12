@@ -80,7 +80,7 @@ class MetadataFallbackTests(unittest.TestCase):
         self.assertEqual("behavior_primary", dense[0]["recommendation_source"])
         self.assertEqual(1, report["low_data_artist_count"])
 
-    def test_top10_caps_broad_metadata_only_candidates_at_three(self):
+    def test_top10_excludes_broad_metadata_only_candidates(self):
         rows = [
             {
                 "seed_artist_name": "Sparse",
@@ -101,7 +101,7 @@ class MetadataFallbackTests(unittest.TestCase):
             artists.append(candidate.__dict__)
         blended, _ = blend_low_data_results(rows, summary, {"artists": artists}, limit=10)
         metadata_only = [row for row in blended if row["recommendation_source"] == "metadata_fallback"]
-        self.assertEqual(3, len(metadata_only))
+        self.assertEqual(0, len(metadata_only))
 
     def test_broad_genre_alone_is_not_eligible_for_metadata_only_top10(self):
         seed = feature("s", "Sparse", genre="rock", begin=2020)

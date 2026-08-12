@@ -17,7 +17,7 @@ from src.feasibility import PoliteSession, WIKIDATA_SPARQL_URL, normalize_name, 
 
 MUSICBRAINZ_ARTIST_URL = "https://musicbrainz.org/ws/2/artist/{mbid}"
 DEFAULT_MIN_LISTENERS = 30
-DEFAULT_MAX_METADATA_ONLY_TOP10 = 3
+DEFAULT_MAX_METADATA_ONLY_TOP10 = 0
 DEFAULT_MIN_BEHAVIOR_ONLY_COMMON_LISTENERS = 3
 DEFAULT_WIKIDATA_BATCH_SIZE = 100
 
@@ -667,8 +667,8 @@ def blend_low_data_results(
             "max_broad_metadata_only_candidates_in_top10": max_metadata_only_top10,
             "min_behavior_only_common_listeners": min_behavior_only_common_listeners,
             "metadata_only_requires": (
-                "direct relation, curated/specific genre, or broad genre plus "
-                "same country/type and <=10-year activity gap"
+                "direct relation, curated genre, or shared specific genre; "
+                "broad genre matches are supporting evidence only"
             ),
             "known_candidates_excluded": bool(excluded),
             "behavior_weight": "clamp(0.8 * listeners / threshold, 0.15, 0.8)",
