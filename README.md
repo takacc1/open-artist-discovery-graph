@@ -213,7 +213,7 @@ python -m src.serving_db recommend \
 
 `src.api` は、画面と推薦DBをつなぐFastAPI製のHTTP窓口です。起動後は画面側がアーティスト名やMBIDを送り、JSONで検索結果・推薦理由・スコア・信頼度を受け取れます。リクエスト時にMusicBrainzやListenBrainzは呼ばず、有効化済みDBだけを読みます。
 
-公開版はNeon PostgreSQLへ1,978アーティスト・23,270辺・18,189根拠を移行し、Vercel上の `https://open-artist-discovery-api.vercel.app` から読み出します。ローカルSQLiteは再計算と移行元のバックアップとして残し、公開時に開発用パソコンをサーバーとして使いません。Vercel用アプリは `api_service/`、SQLiteからPostgreSQLへの移行処理は `src/migrate_sqlite_to_postgres.py` にあります。
+公開版はNeon PostgreSQLへ1,978アーティスト・23,270辺・18,189根拠を移行し、Vercel上の `https://open-artist-discovery-api.vercel.app` から読み出します。Web画面は `https://nextsound-jp.vercel.app` で公開しています。ローカルSQLiteは再計算と移行元のバックアップとして残し、公開時に開発用パソコンをサーバーとして使いません。Vercel用APIは `api_service/`、SQLiteからPostgreSQLへの移行処理は `src/migrate_sqlite_to_postgres.py` にあります。
 
 ```bash
 source .venv/bin/activate

@@ -93,7 +93,7 @@ class DataVersionResponse(BaseModel):
 def configured_origins() -> list[str]:
     value = os.environ.get(
         "ARTIST_DISCOVERY_CORS_ORIGINS",
-        "http://localhost:3000,https://open-artist-discovery.tthbjcv.chatgpt.site",
+        "http://localhost:3000,https://nextsound-jp.vercel.app,https://open-artist-discovery.tthbjcv.chatgpt.site",
     )
     return [origin.strip() for origin in value.split(",") if origin.strip()]
 
