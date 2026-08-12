@@ -31,7 +31,8 @@ type Mode = "near" | "bridge" | "adventure";
 type ApiState = "checking" | "connected" | "preview";
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
+  process.env.NEXT_PUBLIC_API_BASE_URL ??
+  "https://open-artist-discovery-api.vercel.app";
 
 const artists: Artist[] = [
   { mbid: "b51c672b-85e0-48fe-8648-470a2422229f", name: "aespa", artist_type: "Group", area_code: "KR" },

@@ -23,9 +23,11 @@ uvicorn src.api:app --reload --host 127.0.0.1 --port 8000
 
 ## API接続
 
-接続先は `NEXT_PUBLIC_API_BASE_URL` で設定します。未指定時は `http://127.0.0.1:8000` を使います。
+接続先は `NEXT_PUBLIC_API_BASE_URL` で設定します。公開版はVercel上の
+`https://open-artist-discovery-api.vercel.app` を使います。ローカル開発では
+`.env.local` に `http://127.0.0.1:8000` を指定できます。
 
-APIへ接続できない場合は、画面が壊れないようにプレビューモードへ切り替わります。プレビューはaespa・IVE・TWICEの実計算済みv4結果を表示します。本番公開では、推薦APIを外部から接続できる場所へ配置して環境変数を更新します。
+通常は公開APIへ接続し、DB内の1,978組を名前検索できます。APIへ接続できない場合だけ、画面が壊れないようにプレビューモードへ切り替わります。プレビューはaespa・IVE・TWICEの実計算済みv4結果を表示します。
 
 ## 確認コマンド
 

@@ -211,14 +211,16 @@ python -m src.serving_db recommend \
 
 ## 推薦HTTP API
 
-`src.api` は、画面と推薦DBをつなぐFastAPI製のHTTP窓口です。起動後は画面側がアーティスト名やMBIDを送り、JSONで検索結果・推薦理由・スコア・信頼度を受け取れます。リクエスト時にMusicBrainzやListenBrainzは呼ばず、有効化済みのローカルDBだけを読みます。
+`src.api` は、画面と推薦DBをつなぐFastAPI製のHTTP窓口です。起動後は画面側がアーティスト名やMBIDを送り、JSONで検索結果・推薦理由・スコア・信頼度を受け取れます。リクエスト時にMusicBrainzやListenBrainzは呼ばず、有効化済みDBだけを読みます。
+
+公開版はNeon PostgreSQLへ1,978アーティスト・23,270辺・18,189根拠を移行し、Vercel上の `https://open-artist-discovery-api.vercel.app` から読み出します。ローカルSQLiteは再計算と移行元のバックアップとして残し、公開時に開発用パソコンをサーバーとして使いません。Vercel用アプリは `api_service/`、SQLiteからPostgreSQLへの移行処理は `src/migrate_sqlite_to_postgres.py` にあります。
 
 ```bash
 source .venv/bin/activate
 uvicorn src.api:app --reload --host 127.0.0.1 --port 8000
 ```
 
-起動後、`http://127.0.0.1:8000/docs` を開くと、ブラウザ上で全APIを試せます。
+ローカル起動後は `http://127.0.0.1:8000/docs`、公開版は `https://open-artist-discovery-api.vercel.app/docs` で全APIを試せます。
 
 | メソッド | パス | 用途 |
 |---|---|---|
