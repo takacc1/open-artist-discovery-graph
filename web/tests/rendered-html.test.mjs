@@ -39,7 +39,7 @@ test("keeps API behavior and starter cleanup explicit", async () => {
   assert.match(page, /NEXT_PUBLIC_API_BASE_URL/);
   assert.match(page, /\/artists\/search/);
   assert.match(page, /\/recommendations/);
-  assert.match(page, /\/searches\/recent/);
+  assert.doesNotMatch(page, /\/searches\/recent|みんなの検索/);
   assert.match(page, /feedback/);
   assert.match(page, /scrollIntoView/);
   assert.match(page, /PREVIEW/);

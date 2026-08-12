@@ -87,26 +87,6 @@ class FeedbackRequest(BaseModel):
     rating: Literal[0, 1, 2]
 
 
-class PublicSeed(BaseModel):
-    mbid: str
-    name: str
-
-
-class PublicRecommendation(BaseModel):
-    artist_mbid: str
-    artist_name: str
-    score: float
-
-
-class RecentSearch(BaseModel):
-    search_id: UUID
-    mode: Literal["near", "bridge", "adventure"]
-    seed_artists: list[PublicSeed]
-    recommendations: list[PublicRecommendation]
-    feedback_rating: Literal[0, 1, 2] | None = None
-    created_at: str
-
-
 class DataVersionResponse(BaseModel):
     model_version: str
     window_days: int
@@ -409,26 +389,6 @@ def record_search(seed_mbids: list[str], result: dict[str, Any]) -> str:
     return str(row["search_id"])
 
 
-def get_recent_searches(limit: int) -> list[dict[str, Any]]:
-    with connect() as connection:
-        rows = connection.execute(
-            """
-            SELECT
-                search_id::text AS search_id,
-                mode,
-                seed_artists,
-                recommendations,
-                feedback_rating,
-                created_at::text AS created_at
-            FROM recommendation_searches
-            ORDER BY created_at DESC
-            LIMIT %s
-            """,
-            (limit,),
-        ).fetchall()
-    return [dict(row) for row in rows]
-
-
 def record_feedback(search_id: str, rating: int) -> bool:
     with connect() as connection:
         row = connection.execute(
@@ -519,17 +479,6 @@ def recommendations(payload: RecommendationRequest) -> dict[str, Any]:
     result = call_database(recommend, seed_mbids, mode=payload.mode, limit=payload.limit)
     result["search_id"] = call_database(record_search, seed_mbids, result)
     return result
-
-
-@app.get(
-    "/searches/recent",
-    response_model=list[RecentSearch],
-    tags=["feedback"],
-)
-def recent_searches(
-    limit: Annotated[int, Query(ge=1, le=20)] = 8,
-) -> list[dict[str, Any]]:
-    return call_database(get_recent_searches, limit)
 
 
 @app.post("/searches/{search_id}/feedback", tags=["feedback"])

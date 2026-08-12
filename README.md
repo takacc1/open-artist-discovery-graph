@@ -229,7 +229,6 @@ uvicorn src.api:app --reload --host 127.0.0.1 --port 8000
 | GET | `/artists/{mbid}` | アーティスト基本情報を取得 |
 | GET | `/artists/{mbid}/neighbors` | 1組の近いアーティストを取得 |
 | POST | `/recommendations` | 1〜5組を統合して推薦し、匿名の検索記録を保存 |
-| GET | `/searches/recent` | 最近の匿名検索と推薦上位3組を取得 |
 | POST | `/searches/{search_id}/feedback` | 推薦への3段階評価（0〜2）を保存 |
 | GET | `/data-version` | 有効モデル・期間・辺数を取得 |
 

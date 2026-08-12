@@ -58,28 +58,6 @@ class HostedApiTests(unittest.TestCase):
         mocked_recommend.assert_called_once()
         mocked_record.assert_called_once()
 
-    @patch("api_service.index.get_recent_searches")
-    def test_recent_searches_are_public_and_bounded(self, mocked_recent):
-        mocked_recent.return_value = [
-            {
-                "search_id": SEARCH,
-                "mode": "bridge",
-                "seed_artists": [{"mbid": SEED, "name": "Seed"}],
-                "recommendations": [
-                    {"artist_mbid": RESULT, "artist_name": "Result", "score": 0.8}
-                ],
-                "feedback_rating": 2,
-                "created_at": "2026-08-12 00:00:00+00",
-            }
-        ]
-        response = self.client.get("/searches/recent", params={"limit": 8})
-        self.assertEqual(200, response.status_code)
-        self.assertEqual("Seed", response.json()[0]["seed_artists"][0]["name"])
-        self.assertEqual(2, response.json()[0]["feedback_rating"])
-
-        too_many = self.client.get("/searches/recent", params={"limit": 100})
-        self.assertEqual(422, too_many.status_code)
-
     @patch("api_service.index.record_feedback", return_value=True)
     def test_feedback_accepts_only_three_ratings(self, mocked_feedback):
         saved = self.client.post(f"/searches/{SEARCH}/feedback", json={"rating": 2})

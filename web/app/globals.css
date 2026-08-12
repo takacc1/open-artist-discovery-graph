@@ -447,19 +447,6 @@ main { min-height: 100vh; overflow: hidden; }
 }
 .feedback-panel > p { margin: 16px 0 0; color: var(--green); font-size: 11px; }
 
-.recent-section { width: min(1360px, 92vw); margin: 0 auto; padding: 0 0 120px; }
-.recent-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
-.recent-heading h2 { margin: 0; font-size: clamp(30px, 4vw, 52px); letter-spacing: -.055em; }
-.recent-heading span { color: var(--muted); font: 700 9px/1 monospace; letter-spacing: .12em; }
-.recent-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
-.recent-list article { padding: 22px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); }
-.recent-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.recent-meta span { color: var(--green); font-size: 10px; font-weight: 800; }
-.recent-meta small { color: var(--muted); font-size: 9px; }
-.recent-list h3 { margin: 14px 0 10px; font-size: 18px; line-height: 1.4; }
-.recent-list p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
-.recent-empty { margin: 0; padding: 24px; border: 1px solid var(--line); border-radius: 14px; color: var(--muted); font-size: 11px; text-align: center; }
-
 .method-section {
   min-height: 820px;
   display: grid;
@@ -513,7 +500,6 @@ footer > a {
   .discovery-shell { grid-template-columns: 1fr; }
   .artist-panel { border-right: 0; border-bottom: 1px solid var(--line); }
   .recommendation-list { grid-template-columns: 1fr; }
-  .recent-list { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 720px) {
@@ -550,7 +536,6 @@ footer > a {
   .feedback-panel { padding: 26px 16px; }
   .feedback-panel > div { flex-direction: column; }
   .feedback-panel button { width: 100%; }
-  .recent-section { width: calc(100% - 28px); padding-bottom: 80px; }
   .method-section { min-height: auto; grid-template-columns: 1fr; }
   .method-photo { min-height: 70svh; background-position: center 35%; }
   .method-content { padding: 80px 22px; }
