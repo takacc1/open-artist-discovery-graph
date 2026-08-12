@@ -188,35 +188,40 @@ export default function Home() {
     <main>
       <header className="site-header">
         <a className="brand" href="#top" aria-label="Open Artist Discovery ホーム">
-          <span className="brand-mark" aria-hidden="true"><i /><i /><i /></span>
-          <span>OPEN ARTIST<br />DISCOVERY</span>
+          Open Artist Discovery
         </a>
-        <div className="header-meta">
-          <span className={`status-dot ${apiState}`} />
-          {apiState === "connected" ? "v4 API 接続中" : apiState === "checking" ? "接続確認中" : "プレビューモード"}
+        <div className="header-right">
+          <a href="#discover">DISCOVER</a>
+          <div className="header-meta">
+            <span className={`status-dot ${apiState}`} />
+            {apiState === "connected" ? "API LIVE" : apiState === "checking" ? "CHECKING" : "PREVIEW"}
+          </div>
         </div>
       </header>
 
       <section className="hero" id="top">
+        <div className="hero-shade" aria-hidden="true" />
         <div className="hero-copy">
-          <p className="eyebrow">EXPLAINABLE MUSIC DISCOVERY</p>
-          <h1>好きの交差点から、<br /><em>次の一組</em>へ。</h1>
+          <p className="eyebrow">EXPLAINABLE MUSIC DISCOVERY / 001</p>
+          <h1>FIND YOUR<br /><em>NEXT SOUND</em></h1>
           <p className="lead">
-            好きなアーティストを重ねると、聴取傾向のあいだにいる候補が見えてくる。
-            理由と信頼度を確かめながら、まだ知らない音楽へ。
+            好きなアーティストの交差点から、次の一組へ。
           </p>
         </div>
-        <div className="hero-orbit" aria-hidden="true">
-          <span className="orbit-ring ring-one" />
-          <span className="orbit-ring ring-two" />
-          <span className="orbit-node node-a">A</span>
-          <span className="orbit-node node-b">I</span>
-          <span className="orbit-node node-c">T</span>
-          <span className="orbit-center">?</span>
+        <div className="hero-foot">
+          <p>SELECT 3–5 ARTISTS<br />CHOOSE YOUR DIRECTION</p>
+          <a href="#discover">SCROLL <span aria-hidden="true" /></a>
         </div>
       </section>
 
-      <section className="discovery-shell" aria-label="推薦条件">
+      <section className="discovery-section" id="discover">
+        <div className="section-intro">
+          <p>YOUR TASTE, EXPLAINED.</p>
+          <h2>好きな音楽を重ねて、<br />まだ知らない一組を探す。</h2>
+          <span>聴取傾向と根拠を見ながら、近くも遠くも探索できます。</span>
+        </div>
+
+      <div className="discovery-shell" aria-label="推薦条件">
         <div className="step-panel artist-panel">
           <div className="step-heading">
             <span>01</span>
@@ -274,6 +279,7 @@ export default function Home() {
             {modeOptions.map((option) => (
               <button
                 key={option.id}
+                data-mode={option.id}
                 className={mode === option.id ? "mode-card active" : "mode-card"}
                 onClick={() => { setMode(option.id); setRecommendations([]); }}
                 aria-pressed={mode === option.id}
@@ -296,6 +302,7 @@ export default function Home() {
             <b aria-hidden="true">↗</b>
           </button>
         </div>
+      </div>
       </section>
 
       <section className={recommendations.length ? "results-section visible" : "results-section"} aria-live="polite">
@@ -337,21 +344,24 @@ export default function Home() {
       </section>
 
       <section className="method-section">
-        <p className="eyebrow">HOW IT WORKS</p>
-        <div className="method-grid">
-          <h2>ブラックボックスにしない。<br />推薦の根拠まで見せる。</h2>
-          <div className="method-copy">
-            <p>ListenBrainzの聴取傾向を匿名集計し、共通リスナーが少ない関係を慎重に補正。データが少ない場合だけ、MusicBrainzとWikidataの構造化情報で補います。</p>
-            <div><span>01</span>個人の聴取履歴は保存しない</div>
-            <div><span>02</span>広いジャンルだけでは推薦しない</div>
-            <div><span>03</span>弱い候補で10件を埋めない</div>
+        <div className="method-photo" aria-hidden="true" />
+        <div className="method-content">
+          <p className="eyebrow">HOW IT WORKS / TRANSPARENT BY DESIGN</p>
+          <div className="method-grid">
+            <h2>推薦の理由まで、<br />見える音楽体験。</h2>
+            <div className="method-copy">
+              <p>ListenBrainzの聴取傾向を匿名集計し、共通リスナーが少ない関係を慎重に補正。データが少ない場合だけ、MusicBrainzとWikidataの構造化情報で補います。</p>
+              <div><span>01</span>個人の聴取履歴は保存しない</div>
+              <div><span>02</span>広いジャンルだけでは推薦しない</div>
+              <div><span>03</span>弱い候補で10件を埋めない</div>
+            </div>
           </div>
         </div>
       </section>
 
       <footer>
-        <div className="brand footer-brand"><span className="brand-mark" aria-hidden="true"><i /><i /><i /></span><span>OPEN ARTIST<br />DISCOVERY</span></div>
-        <p>MusicBrainz · ListenBrainz · Wikidata<br />Transparent, privacy-aware music discovery.</p>
+        <div className="brand footer-brand">Open Artist Discovery</div>
+        <p>MusicBrainz · ListenBrainz · Wikidata<br />Photos: Christina Chauskin, Austin Edwards / Unsplash</p>
         <a href="#top">TOP ↑</a>
       </footer>
     </main>

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import "./globals.css";
 
-const title = "Open Artist Discovery — 好きの交差点から次の一組へ";
+const title = "Open Artist Discovery — Find Your Next Sound";
 const description = "複数の好きなアーティストを重ね、理由と信頼度を確かめながら次の音楽を探す、透明なアーティスト推薦サービス。";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -10,7 +10,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host") ?? "localhost:3000";
   const protocol = requestHeaders.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
   const base = new URL(`${protocol}://${host}`);
-  const socialImage = new URL("/og.png", base).toString();
+  const socialImage = new URL("/og-dark.png", base).toString();
 
   return {
     metadataBase: base,

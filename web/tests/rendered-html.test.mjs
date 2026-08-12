@@ -21,7 +21,7 @@ test("server-renders the music discovery product", async () => {
   const html = await response.text();
   assert.match(html, /<html lang="ja">/i);
   assert.match(html, /<title>Open Artist Discovery/);
-  assert.match(html, /好きの交差点から/);
+  assert.match(html, /好きなアーティストの交差点から/);
   assert.match(html, /好きなアーティスト/);
   assert.match(html, /橋渡し/);
   assert.match(html, /おすすめを探す/);
@@ -38,7 +38,7 @@ test("keeps API behavior and starter cleanup explicit", async () => {
   assert.match(page, /NEXT_PUBLIC_API_BASE_URL/);
   assert.match(page, /\/artists\/search/);
   assert.match(page, /\/recommendations/);
-  assert.match(page, /プレビューモード/);
+  assert.match(page, /PREVIEW/);
   assert.match(layout, /lang="ja"/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   assert.doesNotMatch(page + layout, /_sites-preview|codex-preview/);
