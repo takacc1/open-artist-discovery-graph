@@ -80,7 +80,7 @@ class MetadataFallbackTests(unittest.TestCase):
         self.assertEqual("behavior_primary", dense[0]["recommendation_source"])
         self.assertEqual(1, report["low_data_artist_count"])
 
-    def test_top10_keeps_at_least_five_behavior_candidates(self):
+    def test_top10_caps_broad_metadata_only_candidates_at_three(self):
         rows = [
             {
                 "seed_artist_name": "Sparse",
@@ -95,10 +95,126 @@ class MetadataFallbackTests(unittest.TestCase):
         ]
         summary = {"similarity": {"artists": [{"mbid": "s", "listener_count_in_window": 1}]}}
         artists = [feature("s", "Sparse", genre="rock").__dict__]
-        artists.extend(feature(f"m{index}", f"Metadata {index}", genre="rock").__dict__ for index in range(10))
+        for index in range(10):
+            candidate = feature(f"m{index}", f"Metadata {index}", begin=2020)
+            candidate.wikidata_genres = ["Q11399"]
+            artists.append(candidate.__dict__)
         blended, _ = blend_low_data_results(rows, summary, {"artists": artists}, limit=10)
         metadata_only = [row for row in blended if row["recommendation_source"] == "metadata_fallback"]
-        self.assertEqual(5, len(metadata_only))
+        self.assertEqual(3, len(metadata_only))
+
+    def test_broad_genre_alone_is_not_eligible_for_metadata_only_top10(self):
+        seed = feature("s", "Sparse", genre="rock", begin=2020)
+        candidate = feature("c", "Candidate", country="US", begin=1980)
+        candidate.wikidata_genres = ["Q11399"]
+
+        score = metadata_similarity(seed, candidate)
+
+        self.assertGreater(score["metadata_score"], 0)
+        self.assertFalse(score["metadata_only_eligible"])
+
+    def test_broad_genre_with_country_type_and_close_period_is_eligible(self):
+        seed = feature("s", "Sparse", genre="rock", begin=2020)
+        candidate = feature("c", "Candidate", genre="", begin=2024)
+        candidate.wikidata_genres = ["Q11399"]
+
+        score = metadata_similarity(seed, candidate)
+
+        self.assertTrue(score["metadata_only_eligible"])
+
+    def test_specific_genre_candidates_are_not_blocked_by_broad_genre_cap(self):
+        rows = [
+            {
+                "seed_artist_name": "Sparse",
+                "seed_artist_mbid": "s",
+                "candidate_artist_name": "Behavior noise",
+                "candidate_artist_mbid": "noise",
+                "similarity_score": "0.1",
+                "common_listener_count": "2",
+                "rank": "1",
+                "confidence": "low",
+            }
+        ]
+        summary = {
+            "similarity": {"artists": [{"mbid": "s", "listener_count_in_window": 1}]}
+        }
+        seed = feature("s", "Sparse", genre="", begin=2020)
+        seed.wikidata_genres = ["Q850412"]
+        artists = [seed.__dict__]
+        for index in range(10):
+            candidate = feature(f"m{index}", f"Metadata {index}", genre="", begin=2020)
+            candidate.wikidata_genres = ["Q850412"]
+            artists.append(candidate.__dict__)
+
+        blended, _ = blend_low_data_results(
+            rows, summary, {"artists": artists}, limit=10, max_metadata_only_top10=3
+        )
+
+        self.assertEqual(10, len(blended))
+
+    def test_two_listener_candidate_survives_with_specific_metadata_evidence(self):
+        rows = [
+            {
+                "seed_artist_name": "Sparse",
+                "seed_artist_mbid": "s",
+                "candidate_artist_name": "Supported blend",
+                "candidate_artist_mbid": "supported",
+                "similarity_score": "0.5",
+                "common_listener_count": "2",
+                "rank": "1",
+                "confidence": "low",
+            }
+        ]
+        summary = {
+            "similarity": {"artists": [{"mbid": "s", "listener_count_in_window": 2}]}
+        }
+        seed = feature("s", "Sparse", genre="", begin=2020)
+        seed.wikidata_genres = ["Q850412"]
+        candidate = feature("supported", "Supported blend", genre="", begin=2020)
+        candidate.wikidata_genres = ["Q850412"]
+
+        blended, _ = blend_low_data_results(
+            rows,
+            summary,
+            {"artists": [seed.__dict__, candidate.__dict__]},
+            limit=10,
+        )
+
+        self.assertEqual(1, len(blended))
+        self.assertEqual("behavior_metadata_blend", blended[0]["recommendation_source"])
+
+    def test_two_listener_behavior_only_candidate_is_skipped_from_top10(self):
+        rows = [
+            {
+                "seed_artist_name": "Sparse",
+                "seed_artist_mbid": "s",
+                "candidate_artist_name": "Weak behavior",
+                "candidate_artist_mbid": "weak",
+                "similarity_score": "0.9",
+                "common_listener_count": "2",
+                "rank": "1",
+                "confidence": "low",
+            },
+            {
+                "seed_artist_name": "Sparse",
+                "seed_artist_mbid": "s",
+                "candidate_artist_name": "Supported behavior",
+                "candidate_artist_mbid": "supported",
+                "similarity_score": "0.5",
+                "common_listener_count": "3",
+                "rank": "2",
+                "confidence": "low",
+            },
+        ]
+        summary = {
+            "similarity": {"artists": [{"mbid": "s", "listener_count_in_window": 2}]}
+        }
+        metadata = {"artists": [feature("s", "Sparse").__dict__]}
+
+        blended, _ = blend_low_data_results(rows, summary, metadata, limit=10)
+
+        self.assertEqual(1, len(blended))
+        self.assertEqual("supported", blended[0]["candidate_artist_mbid"])
 
     def test_excludes_known_candidates_from_sparse_results(self):
         rows = [

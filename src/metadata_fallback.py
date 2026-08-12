@@ -17,8 +17,22 @@ from src.feasibility import PoliteSession, WIKIDATA_SPARQL_URL, normalize_name, 
 
 MUSICBRAINZ_ARTIST_URL = "https://musicbrainz.org/ws/2/artist/{mbid}"
 DEFAULT_MIN_LISTENERS = 30
-DEFAULT_MAX_METADATA_ONLY_TOP10 = 5
+DEFAULT_MAX_METADATA_ONLY_TOP10 = 3
+DEFAULT_MIN_BEHAVIOR_ONLY_COMMON_LISTENERS = 3
 DEFAULT_WIKIDATA_BATCH_SIZE = 100
+
+# These describe very large musical families. Sharing one is useful supporting
+# evidence, but is not enough by itself for a metadata-only Top 10 candidate.
+BROAD_WIKIDATA_GENRES = {
+    "Q11366",  # alternative rock
+    "Q11399",  # rock
+    "Q11401",  # hip hop
+    "Q131578",  # J-pop
+    "Q188450",  # electropop
+    "Q37073",  # pop
+    "Q45981",  # rhythm and blues
+    "Q484641",  # pop rock
+}
 
 # The validation genre is project-owned data. Mapping it to broad Wikidata genre
 # IDs lets a sparse seed match external candidates without copying MusicBrainz's
@@ -376,15 +390,27 @@ def metadata_similarity(seed: ArtistMetadata, candidate: ArtistMetadata) -> dict
     strong_evidence = bool(wd_genre or curated_match or direct_relation)
     if not strong_evidence:
         score = 0.0
+    shared_genres = seed_genres & candidate_genres
+    shared_specific_genres = shared_genres - BROAD_WIKIDATA_GENRES
+    shared_broad_genres = shared_genres & BROAD_WIKIDATA_GENRES
+    close_period = year_gap is not None and year_gap <= 10
+    metadata_only_eligible = bool(
+        direct_relation
+        or curated_match
+        or shared_specific_genres
+        or (shared_broad_genres and same_country and same_type and close_period)
+    )
     evidence = {
-        "shared_wikidata_genres": sorted(
-            seed_genres & candidate_genres
-        ),
+        "shared_wikidata_genres": sorted(shared_genres),
+        "shared_specific_wikidata_genres": sorted(shared_specific_genres),
+        "shared_broad_wikidata_genres": sorted(shared_broad_genres),
         "curated_genre_match": curated_match,
         "direct_relation": direct_relation,
         "same_country": same_country,
         "same_type": same_type,
         "year_gap": year_gap,
+        "close_activity_period": close_period,
+        "metadata_only_eligible": metadata_only_eligible,
     }
     evidence_count = sum(
         [
@@ -393,7 +419,7 @@ def metadata_similarity(seed: ArtistMetadata, candidate: ArtistMetadata) -> dict
             direct_relation,
             same_country,
             same_type,
-            year_gap is not None and year_gap <= 10,
+            close_period,
         ]
     )
     return {"metadata_score": round(score, 6), "evidence_count": evidence_count, **evidence}
@@ -438,9 +464,15 @@ def blend_low_data_results(
     min_listeners: int = DEFAULT_MIN_LISTENERS,
     limit: int = 50,
     max_metadata_only_top10: int = DEFAULT_MAX_METADATA_ONLY_TOP10,
+    min_behavior_only_common_listeners: int = DEFAULT_MIN_BEHAVIOR_ONLY_COMMON_LISTENERS,
     excluded_candidate_names: set[str] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    if min_listeners <= 0 or limit <= 0 or max_metadata_only_top10 < 0:
+    if (
+        min_listeners <= 0
+        or limit <= 0
+        or max_metadata_only_top10 < 0
+        or min_behavior_only_common_listeners < 1
+    ):
         raise ValueError("thresholds and limits are invalid")
     features = {
         row["mbid"].lower(): ArtistMetadata(**row)
@@ -563,16 +595,50 @@ def blend_low_data_results(
         )
         selected_top10: list[dict[str, Any]] = []
         metadata_only_count = 0
+        weak_evidence_skipped = 0
         for row in ranked:
             if len(selected_top10) >= min(10, limit):
                 break
-            if row["recommendation_source"] == "metadata_fallback":
-                if metadata_only_count >= max_metadata_only_top10:
+            source = row["recommendation_source"]
+            evidence = json.loads(row.get("metadata_evidence") or "{}")
+            strong_metadata = bool(evidence.get("metadata_only_eligible"))
+            common_listeners = int(row.get("common_listener_count") or 0)
+            if source == "metadata_fallback":
+                if not strong_metadata:
+                    weak_evidence_skipped += 1
                     continue
-                metadata_only_count += 1
+                specific_metadata = bool(
+                    evidence.get("direct_relation")
+                    or evidence.get("curated_genre_match")
+                    or evidence.get("shared_specific_wikidata_genres")
+                )
+                # Specific genres and direct relationships are not subject to
+                # the broad-family cap. The cap targets generic pop/rock/etc.
+                # matches that previously crowded out better evidence.
+                if not specific_metadata:
+                    if metadata_only_count >= max_metadata_only_top10:
+                        continue
+                    metadata_only_count += 1
+            elif source == "behavior_low_data":
+                if common_listeners < min_behavior_only_common_listeners:
+                    weak_evidence_skipped += 1
+                    continue
+            elif (
+                source == "behavior_metadata_blend"
+                and common_listeners < min_behavior_only_common_listeners
+                and not strong_metadata
+            ):
+                weak_evidence_skipped += 1
+                continue
             selected_top10.append(row)
         selected_ids = {id(row) for row in selected_top10}
-        ordered = selected_top10 + [row for row in ranked if id(row) not in selected_ids]
+        # If fewer than ten candidates pass the evidence rules, return fewer
+        # recommendations instead of silently promoting rejected rows back into
+        # the Top 10. Once the Top 10 is full, lower-ranked rows may still be
+        # retained for offline inspection and larger API limits.
+        ordered = selected_top10
+        if len(selected_top10) == min(10, limit):
+            ordered += [row for row in ranked if id(row) not in selected_ids]
         old_top10 = [str(row["candidate_artist_mbid"]).lower() for row in rows[:10]]
         new_top10 = [str(row["candidate_artist_mbid"]).lower() for row in ordered[:10]]
         for rank, row in enumerate(ordered[:limit], 1):
@@ -587,6 +653,7 @@ def blend_low_data_results(
                 "behavior_weight": round(behavior_weight, 6),
                 "metadata_candidate_count": metadata_candidates,
                 "excluded_behavior_candidate_count": excluded_count,
+                "weak_evidence_skipped_from_top10": weak_evidence_skipped,
                 "top10_changed_count": len(set(old_top10) ^ set(new_top10)) // 2,
             }
         )
@@ -597,7 +664,12 @@ def blend_low_data_results(
         "generated_at": _utc_now(),
         "policy": {
             "min_listener_count": min_listeners,
-            "max_metadata_only_candidates_in_top10": max_metadata_only_top10,
+            "max_broad_metadata_only_candidates_in_top10": max_metadata_only_top10,
+            "min_behavior_only_common_listeners": min_behavior_only_common_listeners,
+            "metadata_only_requires": (
+                "direct relation, curated/specific genre, or broad genre plus "
+                "same country/type and <=10-year activity gap"
+            ),
             "known_candidates_excluded": bool(excluded),
             "behavior_weight": "clamp(0.8 * listeners / threshold, 0.15, 0.8)",
             "metadata_weights": {
@@ -627,6 +699,7 @@ def blend_files(
     min_listeners: int,
     limit: int,
     max_metadata_only_top10: int = DEFAULT_MAX_METADATA_ONLY_TOP10,
+    min_behavior_only_common_listeners: int = DEFAULT_MIN_BEHAVIOR_ONLY_COMMON_LISTENERS,
     excluded_artists_path: Path | None = None,
 ) -> dict[str, Any]:
     rows, report = blend_low_data_results(
@@ -636,6 +709,7 @@ def blend_files(
         min_listeners=min_listeners,
         limit=limit,
         max_metadata_only_top10=max_metadata_only_top10,
+        min_behavior_only_common_listeners=min_behavior_only_common_listeners,
         excluded_candidate_names=(
             excluded_names_from_csv(excluded_artists_path)
             if excluded_artists_path is not None
@@ -680,7 +754,20 @@ def build_parser() -> argparse.ArgumentParser:
     blend.add_argument("--min-listeners", type=int, default=DEFAULT_MIN_LISTENERS)
     blend.add_argument("--limit", type=int, default=50)
     blend.add_argument(
-        "--max-metadata-only-top10", type=int, default=DEFAULT_MAX_METADATA_ONLY_TOP10
+        "--max-broad-metadata-only-top10",
+        "--max-metadata-only-top10",
+        dest="max_metadata_only_top10",
+        type=int,
+        default=DEFAULT_MAX_METADATA_ONLY_TOP10,
+        help=(
+            "Maximum generic broad-genre metadata-only candidates in a sparse "
+            "artist's Top 10"
+        ),
+    )
+    blend.add_argument(
+        "--min-behavior-only-common-listeners",
+        type=int,
+        default=DEFAULT_MIN_BEHAVIOR_ONLY_COMMON_LISTENERS,
     )
     blend.add_argument(
         "--exclude-artists",
@@ -744,6 +831,7 @@ def main() -> None:
             args.min_listeners,
             args.limit,
             args.max_metadata_only_top10,
+            args.min_behavior_only_common_listeners,
             args.exclude_artists,
         )
         print(json.dumps(report, ensure_ascii=False, indent=2))
