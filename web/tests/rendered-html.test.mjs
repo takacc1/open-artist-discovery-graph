@@ -24,6 +24,7 @@ test("server-renders the music discovery product", async () => {
   assert.match(html, /好きなアーティスト/);
   assert.match(html, /橋渡し/);
   assert.match(html, /おすすめを探す/);
+  assert.doesNotMatch(html, /↗/);
   assert.match(html, />0<!-- --> \/ 5</);
   assert.doesNotMatch(html, /好きなアーティストから、次の一組へ/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);

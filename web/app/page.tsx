@@ -329,7 +329,7 @@ export default function Home() {
           <p>選んだ内容と回答は匿名で保存されます。</p>
           <button className="discover-button" onClick={discover} disabled={loading || selected.length === 0}>
             <span>{loading ? "探索中…" : "おすすめを探す"}</span>
-            <b aria-hidden="true">↗</b>
+            <span className="discover-icon" aria-hidden="true" />
           </button>
         </div>
       </div>

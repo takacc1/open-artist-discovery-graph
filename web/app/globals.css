@@ -330,15 +330,35 @@ main { min-height: 100vh; overflow: hidden; }
 }
 .discover-button:hover:not(:disabled) { transform: scale(1.025); background: var(--green); }
 .discover-button:disabled { opacity: .55; cursor: wait; }
-.discover-button b {
+.discover-icon {
+  position: relative;
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  display: grid;
-  place-items: center;
+  flex: 0 0 44px;
   background: black;
   color: white;
-  font-size: 20px;
+}
+.discover-icon::before {
+  content: "";
+  position: absolute;
+  top: 21px;
+  left: 12px;
+  width: 20px;
+  height: 2px;
+  border-radius: 2px;
+  background: currentColor;
+  transform: rotate(-45deg);
+}
+.discover-icon::after {
+  content: "";
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 9px;
+  height: 9px;
+  border-top: 2px solid currentColor;
+  border-right: 2px solid currentColor;
 }
 
 .results-section { width: min(1360px, 92vw); margin: 0 auto; scroll-margin-top: 96px; }
