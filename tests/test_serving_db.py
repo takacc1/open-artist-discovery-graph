@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from src.serving_db import (
+    activate_model,
     build_database,
     database_stats,
     get_neighbors,
@@ -82,6 +83,16 @@ class ServingDatabaseTests(unittest.TestCase):
         result = recommend(self.database, ["not-in-db"])
         self.assertEqual(["not-in-db"], result["missing_seed_mbids"])
         self.assertEqual([], result["recommendations"])
+
+    def test_activates_an_existing_model_without_reimporting_edges(self) -> None:
+        result = activate_model(self.database, "test-v1")
+
+        self.assertEqual("test-v1", result["active_model"])
+        self.assertEqual(4, result["active_model_edge_count"])
+
+    def test_rejects_unknown_model_activation(self) -> None:
+        with self.assertRaises(ValueError):
+            activate_model(self.database, "missing-v2")
 
 
 if __name__ == "__main__":

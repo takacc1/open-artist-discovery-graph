@@ -2,6 +2,7 @@ import unittest
 
 from src.metadata_evidence_metrics import (
     EXPECTED_CANDIDATE_COUNTS,
+    V4_EXPECTED_CANDIDATE_COUNTS,
     build_result,
     validate_rows,
 )
@@ -18,6 +19,23 @@ def rating_rows(default_rating=2):
                     "rank": rank,
                     "recommendation_source": "metadata_fallback",
                     "rating_status": "要入力" if rank > 5 else "引継ぎ",
+                    "human_rating_0_1_2": default_rating,
+                }
+            )
+    return rows
+
+
+def v4_rating_rows(default_rating=2):
+    rows = []
+    for artist, count in V4_EXPECTED_CANDIDATE_COUNTS.items():
+        for rank in range(1, count + 1):
+            rows.append(
+                {
+                    "seed_artist_name": artist,
+                    "candidate_artist_name": f"{artist} candidate {rank}",
+                    "rank": rank,
+                    "recommendation_source": "behavior_metadata_blend",
+                    "rating_status": "要入力" if rank > 8 else "引継ぎ",
                     "human_rating_0_1_2": default_rating,
                 }
             )
@@ -57,6 +75,17 @@ class MetadataEvidenceMetricsTests(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             validate_rows(rows)
+
+    def test_v4_passes_with_four_zero_ratings(self):
+        rows = v4_rating_rows()
+        for row in rows[:4]:
+            row["human_rating_0_1_2"] = 0
+
+        result = build_result(rows, profile="v4")
+
+        self.assertEqual("PASS", result["decision"])
+        self.assertEqual(0.925, result["coverage"]["candidate_fill_rate"])
+        self.assertAlmostEqual(4 / 74, result["overall"]["rating_0_rate"])
 
 
 if __name__ == "__main__":

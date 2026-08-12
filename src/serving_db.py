@@ -399,6 +399,35 @@ def active_model(connection: sqlite3.Connection) -> str:
     return str(row["model_version"])
 
 
+def activate_model(database: Path, model_version: str) -> dict[str, Any]:
+    initialize_database(database)
+    with connect(database) as connection:
+        model = connection.execute(
+            "SELECT model_version FROM model_versions WHERE model_version = ?",
+            (model_version,),
+        ).fetchone()
+        if model is None:
+            raise ValueError(f"Unknown model version: {model_version}")
+        edge_count = int(
+            connection.execute(
+                "SELECT COUNT(*) FROM artist_edges WHERE model_version = ?",
+                (model_version,),
+            ).fetchone()[0]
+        )
+        if edge_count == 0:
+            raise ValueError(f"Model has no recommendation edges: {model_version}")
+        connection.execute("UPDATE model_versions SET is_active = 0")
+        connection.execute(
+            "UPDATE model_versions SET is_active = 1 WHERE model_version = ?",
+            (model_version,),
+        )
+    return {
+        "database": str(database),
+        "active_model": model_version,
+        "active_model_edge_count": edge_count,
+    }
+
+
 def search_artists(database: Path, query: str, limit: int = 10) -> list[dict[str, Any]]:
     pattern = f"%{query.strip()}%"
     with connect(database) as connection:
@@ -635,6 +664,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     stats = subparsers.add_parser("stats")
     stats.add_argument("--database", type=Path, required=True)
+
+    activate = subparsers.add_parser("activate")
+    activate.add_argument("--database", type=Path, required=True)
+    activate.add_argument("--model-version", required=True)
     return parser
 
 
@@ -661,6 +694,8 @@ def main() -> None:
             mode=args.mode,
             limit=args.limit,
         )
+    elif args.command == "activate":
+        result = activate_model(args.database, args.model_version)
     else:
         result = database_stats(args.database)
     print(json.dumps(result, ensure_ascii=False, indent=2))

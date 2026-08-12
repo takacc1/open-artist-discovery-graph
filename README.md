@@ -14,7 +14,7 @@
 - `src/recommendation_fallback.py`: 30日を基本に、低データ時は90日、未計算時はオンデマンド計算へ振り分け
 - `src/metadata_fallback.py`: MusicBrainz／Wikidataメタデータを取得し、30人未満だけ行動類似度と混合
 - `src/metadata_fallback_metrics.py`: 拡張メタデータ補助の80候補を0・1・2で集計し、方式別の弱点を確認
-- `src/metadata_evidence_metrics.py`: 共通の証拠条件を適用した76候補を再集計し、安全停止を含めて合否判定
+- `src/metadata_evidence_metrics.py`: v3/v4の共通証拠ルールを再集計し、安全停止を含めて合否判定
 - `src/serving_db.py`: アーティストとTop候補をグラフ形式で保存し、検索・単一近傍・複数シード推薦を実行
 - `src/window_revaluation.py`: 期間を広げたTop 10と前回評価を照合し、新候補だけの再評価表を生成
 - `src/window_revaluation_metrics.py`: 30日版260候補の採点を集計し、7日版との差とデータ量別品質を出力
@@ -139,12 +139,12 @@ python -m src.metadata_fallback blend \
 
 共通ルール適用後は8組の上位候補が80件から76件になり、7組はTop 10を生成、ヤングスキニーは条件を通った6件だけを返しました。前回評価48件を引き継ぎ、新規28件も人手評価した結果、評価2が36件、評価1が32件、評価0が8件です。候補充足率95.0%、固定枠の緩いP@10は85.0%、返した候補内の緩い精度は89.5%、厳しいP@5は47.5%、NDCG@10は85.6%でした。評価0は前回の14件から8件へ減りましたが、評価0率10.5%が10%未満の基準を0.5ポイント超えたため総合判定は `REVIEW` のままです。新モデルは有効化しません。
 
-v4の共通ルールをv3の採点済み結果へ事前適用すると、候補9件を除外し、そのうち4件は評価0でした。8組全体は74候補となり、v3から引き継げる67件の評価0率は4/67、6.0%です。新たに入った7件はまだ未評価なので、この6.0%をv4全体の最終精度とは扱いません。7組はTop 10を返し、ヤングスキニーは証拠条件を通った4件だけを返します。追加7件の人手評価が終わるまでv4も有効化しません。
+v4ではv3候補9件を除外し、そのうち4件は評価0でした。v3評価67件を引き継ぎ、新規7件も人手評価した結果、評価2が39件、評価1が31件、評価0が4件です。候補充足率92.5%、固定枠の緩いP@10は87.5%、返した候補内の緩い精度は94.6%、厳しいP@5は50.0%、NDCG@10は90.4%、評価0率は5.4%でした。4つのMVP基準をすべて満たして `PASS` となったため、v4を有効モデルに切り替えました。7組はTop 10を返し、ヤングスキニーは弱い候補で埋めず4件だけを返します。
 
 共通ルール版76候補は次で再集計できます。個人の採点とメモはローカルCSVのままGit管理しません。
 
 ```bash
-python -m src.metadata_evidence_metrics
+python -m src.metadata_evidence_metrics --profile v4
 ```
 
 80候補は次で再集計できます。個人の採点とメモはローカルCSVのままGit管理しません。
@@ -165,16 +165,16 @@ python -m src.metadata_fallback_metrics
 python -m src.serving_db build \
   --database reports/serving/artist_discovery.sqlite3 \
   --coverage reports/artist_coverage.csv \
-  --similarity reports/serving_metadata_expanded/similarity_top50.csv \
-  --model-version cosine-shrinkage-metadata-expanded-30d-v2 \
+  --similarity reports/serving_metadata_evidence_v4/similarity_top50.csv \
+  --model-version cosine-shrinkage-specific-evidence-30d-v4 \
   --window-days 30
 ```
 
-拡張メタデータ補助済み30日版は90入力アーティストすべてにTop 50を生成し、4,500辺を有効モデルとして保存します。DBは行動点、メタデータ点、関係点、信頼度に加え、`edge_evidence`へ共通リスナー数とメタデータ根拠を分離保存します。
+現在のv4は90入力アーティストを収録し、弱い候補を安全停止で除いた4,454辺を有効モデルとして保存します。DBは行動点、メタデータ点、関係点、信頼度に加え、`edge_evidence`へ共通リスナー数とメタデータ根拠を分離保存します。
 
 共通の証拠条件を入れた `cosine-shrinkage-evidence-rules-30d-v3` は4,456辺・根拠4,545件を非アクティブで保存しています。v3は人手評価を完了しましたが判定が `REVIEW` のため有効化していません。
 
-広いジャンルだけのメタデータ単独候補を除外した `cosine-shrinkage-specific-evidence-30d-v4` も、4,454辺・根拠4,544件を非アクティブで追加保存しました。現在の有効モデルは引き続きv2の4,500辺です。旧モデルもロールバック用に残るため、ローカルSQLite全体は1,978アーティスト・23,270辺・根拠18,189件です。DBファイルは生成物としてGit管理しません。
+広いジャンルだけのメタデータ単独候補を除外した `cosine-shrinkage-specific-evidence-30d-v4` は、4,454辺・根拠4,544件を保存し、人手評価 `PASS` 後に有効化しました。v2とv3はロールバック用に残るため、ローカルSQLite全体は1,978アーティスト・23,270辺・根拠18,189件です。DBファイルは生成物としてGit管理しません。既に保存済みのモデルを再取込せず切り替える場合は、`python -m src.serving_db activate --database reports/serving/artist_discovery.sqlite3 --model-version cosine-shrinkage-specific-evidence-30d-v4` を使います。
 
 若者向け26組の30日版Top 10は、前回と同じ113候補の評価を引き継ぎ、新候補147件を追加採点しました。集計は次で再実行できます。
 
